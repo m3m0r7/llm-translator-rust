@@ -58,6 +58,7 @@ make install
 補足:
 - macOS/Linux は `/usr/local/bin` が既定（必要なら `sudo make install`）
 - Windows (MSYS/Git Bash) は `%USERPROFILE%/.cargo/bin`
+- `make install` は `~/.llm-translator-rust/settings.toml` が無ければ `settings.toml` をコピーします。
 
 ## クイックスタート
 

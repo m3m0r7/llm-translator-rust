@@ -58,6 +58,7 @@ Binary will be available at:
 Notes:
 - macOS/Linux default: `/usr/local/bin` (use `sudo make install` if needed)
 - Windows (MSYS/Git Bash): `%USERPROFILE%/.cargo/bin`
+- `make install` also copies `settings.toml` to `~/.llm-translator-rust/settings.toml` if it does not exist.
 
 ## Quickstart
 
