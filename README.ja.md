@@ -47,7 +47,7 @@ cargo install --git https://github.com/m3m0r7/llm-translator-rust --locked
 ```bash
 git clone https://github.com/m3m0r7/llm-translator-rust
 cd llm-translator-rust
-cargo build --release
+make install
 ```
 
 生成物:
@@ -55,6 +55,9 @@ cargo build --release
 ```
 ./target/release/llm-translator-rust
 ```
+補足:
+- macOS/Linux は `/usr/local/bin` が既定（必要なら `sudo make install`）
+- Windows (MSYS/Git Bash) は `%USERPROFILE%/.cargo/bin`
 
 ## クイックスタート
 

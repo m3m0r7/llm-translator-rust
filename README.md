@@ -47,7 +47,7 @@ cargo install --git https://github.com/m3m0r7/llm-translator-rust --locked
 ```bash
 git clone https://github.com/m3m0r7/llm-translator-rust
 cd llm-translator-rust
-cargo build --release
+make install
 ```
 
 Binary will be available at:
@@ -55,6 +55,9 @@ Binary will be available at:
 ```
 ./target/release/llm-translator-rust
 ```
+Notes:
+- macOS/Linux default: `/usr/local/bin` (use `sudo make install` if needed)
+- Windows (MSYS/Git Bash): `%USERPROFILE%/.cargo/bin`
 
 ## Quickstart
 
