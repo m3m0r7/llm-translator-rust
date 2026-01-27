@@ -1,0 +1,79 @@
+# Settings precedence (last wins):
+# - ./settings.toml
+# - ./settings.local.toml
+# - ~/.llm-translator-rust/settings.toml
+# - ~/.llm-translator-rust/settings.local.toml
+# - -r/--read-settings (if provided)
+#
+# [formally] maps style keys (passed via -f/--formal) to guidance text.
+# Add or override keys here. The key you pass on the CLI must exist.
+[formally]
+casual = "Use casual, natural everyday speech."
+formal = "Use polite, formal register suitable for professional contexts."
+loose = "Use relaxed, loose phrasing; prioritize natural flow."
+academic = "Use academic phrasing suitable for papers or scholarly writing."
+gal = "Use playful gyaru/gal tone and trendy flair."
+yankee = "Use rough, delinquent-style speech with tough attitude."
+otaku = "Use otaku-friendly diction, with nerdy nuance and jargon when appropriate."
+elderly = "Use elderly, polite, gentle phrasing with mature tone."
+aristocrat = "Use refined, aristocratic diction with elegance."
+samurai = "Use archaic samurai-style wording and honorific tone."
+braille = "Output the translation in Unicode Braille patterns (U+2800–U+28FF) for the target language."
+morse = "Output the translation in International Morse code (dot/dash), separated by spaces."
+engineer = "Use precise, technical phrasing suitable for engineers."
+
+# [system] controls language packs for -v output.
+# Use ISO 639-3 codes. The first entry is the UI language for labels.
+[system]
+languages = [
+  "eng",
+  "jpn",
+  "spa",
+  "zho",
+  "fra",
+  "deu",
+  "ita",
+  "por",
+  "rus",
+  "kor",
+  "ara",
+  "hin",
+  "ind",
+  "vie",
+  "tha",
+  "nld",
+  "swe",
+  "nor",
+  "dan",
+  "fin",
+  "ell",
+  "heb",
+  "tur",
+  "ukr",
+  "pol",
+  "ces",
+  "hun",
+  "ron",
+  "bul",
+  "srp",
+  "hrv",
+  "slk",
+  "slv",
+  "cat",
+  "eus",
+  "glg",
+  "isl",
+  "gle",
+  "cym",
+  "afr",
+  "amh",
+  "ben",
+  "tam",
+  "tel",
+  "mar",
+  "mal",
+  "guj",
+  "kan",
+  "pan",
+  "yor"
+]

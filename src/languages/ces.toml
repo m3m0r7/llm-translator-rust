@@ -1,0 +1,19 @@
+[translate.iso_country_lang.ces]
+ces = "Czech"
+cs = "Czech"
+
+[translate.parts_of_speech.ces]
+parts_of_speech = "Part of Speech"
+Noun = "Noun"
+Verb = "Verb"
+Adjective = "Adjective"
+Adverb = "Adverb"
+Pronoun = "Pronoun"
+Particle = "Particle"
+Auxiliary = "Auxiliary"
+Conjunction = "Conjunction"
+Interjection = "Interjection"
+Preposition = "Preposition"
+Determiner = "Determiner"
+Subject = "Subject"
+Object = "Object"

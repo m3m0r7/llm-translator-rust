@@ -1,0 +1,16 @@
+{
+  "choices": [
+    {
+      "message": {
+        "tool_calls": [
+          {
+            "function": {
+              "name": "deliver_translation",
+              "arguments": "{\"translation\":\"This is a cat.\",\"source_language\":\"ja\",\"target_language\":\"en\",\"style\":\"formal\",\"slang\":false}"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

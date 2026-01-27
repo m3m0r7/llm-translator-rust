@@ -1,0 +1,19 @@
+[translate.iso_country_lang.kor]
+kor = "Korean"
+ko = "Korean"
+
+[translate.parts_of_speech.kor]
+parts_of_speech = "Part of Speech"
+Noun = "Noun"
+Verb = "Verb"
+Adjective = "Adjective"
+Adverb = "Adverb"
+Pronoun = "Pronoun"
+Particle = "Particle"
+Auxiliary = "Auxiliary"
+Conjunction = "Conjunction"
+Interjection = "Interjection"
+Preposition = "Preposition"
+Determiner = "Determiner"
+Subject = "Subject"
+Object = "Object"

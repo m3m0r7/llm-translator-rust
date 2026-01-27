@@ -1,0 +1,15 @@
+---
+source: src/providers/claude.rs
+expression: response
+---
+{
+  "args": {
+    "slang": false,
+    "source_language": "ja",
+    "style": "formal",
+    "target_language": "en",
+    "translation": "This is a cat."
+  },
+  "model": "claude-3-5-sonnet-latest",
+  "usage": null
+}
