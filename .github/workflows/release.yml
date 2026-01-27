@@ -19,16 +19,31 @@ jobs:
             os: linux
             arch: x86_64
             ext: ""
+            use_cross: false
+          - runner: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            os: linux
+            arch: aarch64
+            ext: ""
+            use_cross: true
           - runner: macos-latest
             target: x86_64-apple-darwin
             os: macos
             arch: x86_64
             ext: ""
+            use_cross: false
+          - runner: macos-latest
+            target: aarch64-apple-darwin
+            os: macos
+            arch: aarch64
+            ext: ""
+            use_cross: false
           - runner: windows-latest
             target: x86_64-pc-windows-msvc
             os: windows
             arch: x86_64
             ext: ".exe"
+            use_cross: false
 
     runs-on: ${{ matrix.runner }}
 
@@ -41,7 +56,16 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Build
+        if: matrix.use_cross != true
         run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Install cross
+        if: matrix.use_cross == true
+        run: cargo install cross --locked
+
+      - name: Build (cross)
+        if: matrix.use_cross == true
+        run: cross build --release --target ${{ matrix.target }}
 
       - name: Package
         shell: bash
