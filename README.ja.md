@@ -27,7 +27,26 @@ LLM のツール呼び出し (JSON) を使った、stdin 入力専用の翻訳 C
 
 ## インストール
 
+以下のいずれかを選んでください。
+
+### 1) GitHub Releases からダウンロード
+
+Releases ページにビルド済みバイナリがあります:
+[GitHub Releases](https://github.com/m3m0r7/llm-translator-rust/releases/latest)
+
+ファイル名は `llm-translator-rust-<os>-<arch>` 形式です（例: `llm-translator-rust-macos-aarch64`）。
+
+### 2) cargo でグローバルにインストール
+
 ```bash
+cargo install --git https://github.com/m3m0r7/llm-translator-rust --locked
+```
+
+### 3) ソースからビルド（git clone）
+
+```bash
+git clone https://github.com/m3m0r7/llm-translator-rust
+cd llm-translator-rust
 cargo build --release
 ```
 
@@ -82,6 +101,9 @@ echo ねこ | llm-translator-rust -l en --formal academic
 
 echo 最高だね | llm-translator-rust -l en --slang
 # Awesome
+
+# ファイル翻訳
+cat foobar.txt | llm-translator-rust -l en
 ```
 
 ## モデル選択とキャッシュ

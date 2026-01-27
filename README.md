@@ -27,9 +27,26 @@ A small CLI translator that uses LLM tool calls and always reads from stdin.
 
 ## Installation
 
-Build from source:
+Choose one of the following:
+
+### 1) Download from GitHub Releases
+
+Release artifacts are available on the Releases page:
+[GitHub Releases](https://github.com/m3m0r7/llm-translator-rust/releases/latest)
+
+Each asset is named `llm-translator-rust-<os>-<arch>` (e.g. `llm-translator-rust-macos-aarch64`).
+
+### 2) Install with cargo (global)
 
 ```bash
+cargo install --git https://github.com/m3m0r7/llm-translator-rust --locked
+```
+
+### 3) Build from source (git clone)
+
+```bash
+git clone https://github.com/m3m0r7/llm-translator-rust
+cd llm-translator-rust
 cargo build --release
 ```
 
@@ -82,8 +99,11 @@ echo Cat | llm-translator-rust -l zho-hant
 echo Cat | llm-translator-rust -l ja --formal academic
 # 猫
 
-echo Awesone | llm-translator-rust -l en --slang
+echo Awesome | llm-translator-rust -l ja --slang
 # ヤバい
+
+# File translation
+cat foobar.txt | llm-translator-rust -l en
 ```
 
 ## Model selection & cache
