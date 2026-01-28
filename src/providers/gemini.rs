@@ -1,9 +1,12 @@
 use anyhow::anyhow;
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
 use super::{
-    Message, MessageRole, Provider, ProviderFuture, ProviderResponse, ProviderUsage, ToolSpec,
+    Message, MessagePart, MessageRole, Provider, ProviderFuture, ProviderResponse, ProviderUsage,
+    ToolSpec,
 };
 
 const BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta/models";
@@ -51,6 +54,11 @@ impl Provider for Gemini {
         self
     }
 
+    fn append_user_data(mut self, data: crate::data::DataAttachment) -> Self {
+        self.messages.push(Message::user_data(data));
+        self
+    }
+
     fn register_tool(mut self, tool: ToolSpec) -> Self {
         self.tools.push(tool);
         self
@@ -73,16 +81,36 @@ impl Provider for Gemini {
 
             let system_instruction = system_inputs
                 .into_iter()
-                .map(|message| message.content)
+                .flat_map(|message| message.parts)
+                .filter_map(|part| match part {
+                    MessagePart::Text(text) => Some(text),
+                    MessagePart::Data(_) => None,
+                })
                 .collect::<Vec<_>>()
                 .join("\n\n");
 
             let contents = user_inputs
                 .into_iter()
                 .map(|message| {
+                    let parts = message
+                        .parts
+                        .into_iter()
+                        .map(|part| match part {
+                            MessagePart::Text(text) => json!({"text": text}),
+                            MessagePart::Data(data) => {
+                                let encoded = BASE64.encode(&data.bytes);
+                                json!({
+                                    "inline_data": {
+                                        "mime_type": data.mime,
+                                        "data": encoded
+                                    }
+                                })
+                            }
+                        })
+                        .collect::<Vec<_>>();
                     json!({
                         "role": "user",
-                        "parts": [{"text": message.content}]
+                        "parts": parts
                     })
                 })
                 .collect::<Vec<_>>();

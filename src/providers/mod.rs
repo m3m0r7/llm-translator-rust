@@ -3,6 +3,8 @@ use serde::Serialize;
 use std::future::Future;
 use std::pin::Pin;
 
+use crate::data::DataAttachment;
+
 mod claude;
 mod gemini;
 mod openai;
@@ -64,22 +66,41 @@ pub enum MessageRole {
 #[derive(Debug, Clone)]
 pub struct Message {
     pub role: MessageRole,
-    pub content: String,
+    pub parts: Vec<MessagePart>,
+}
+
+#[derive(Debug, Clone)]
+pub enum MessagePart {
+    Text(String),
+    Data(DataAttachment),
 }
 
 impl Message {
     pub fn system(content: String) -> Self {
         Self {
             role: MessageRole::System,
-            content,
+            parts: vec![MessagePart::Text(content)],
         }
     }
 
     pub fn user(content: String) -> Self {
         Self {
             role: MessageRole::User,
-            content,
+            parts: vec![MessagePart::Text(content)],
         }
+    }
+
+    pub fn user_data(data: DataAttachment) -> Self {
+        Self {
+            role: MessageRole::User,
+            parts: vec![MessagePart::Data(data)],
+        }
+    }
+
+    pub fn has_data(&self) -> bool {
+        self.parts
+            .iter()
+            .any(|part| matches!(part, MessagePart::Data(_)))
     }
 }
 
@@ -88,6 +109,7 @@ pub type ProviderFuture = Pin<Box<dyn Future<Output = Result<ProviderResponse>> 
 pub trait Provider: Clone + Send + Sync {
     fn append_system_input(self, input: String) -> Self;
     fn append_user_input(self, input: String) -> Self;
+    fn append_user_data(self, data: DataAttachment) -> Self;
     fn register_tool(self, tool: ToolSpec) -> Self;
     fn call_tool(self, tool_name: &str) -> ProviderFuture;
 }
@@ -125,6 +147,14 @@ impl Provider for ProviderImpl {
             ProviderImpl::Claude(provider) => {
                 ProviderImpl::Claude(provider.append_user_input(input))
             }
+        }
+    }
+
+    fn append_user_data(self, data: DataAttachment) -> Self {
+        match self {
+            ProviderImpl::OpenAI(provider) => ProviderImpl::OpenAI(provider.append_user_data(data)),
+            ProviderImpl::Gemini(provider) => ProviderImpl::Gemini(provider.append_user_data(data)),
+            ProviderImpl::Claude(provider) => ProviderImpl::Claude(provider.append_user_data(data)),
         }
     }
 

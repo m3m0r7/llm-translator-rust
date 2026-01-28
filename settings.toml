@@ -25,6 +25,7 @@ engineer = "Use precise, technical phrasing suitable for engineers."
 # [system] controls language packs for -v output.
 # Use ISO 639-3 codes. The first entry is the UI language for labels.
 [system]
+histories = 10
 languages = [
   "eng",
   "jpn",
@@ -77,3 +78,16 @@ languages = [
   "pan",
   "yor"
 ]
+
+# [ocr] controls overlay style for image/pdf OCR annotations.
+# Colors accept any valid CSS color (e.g. "#c40000").
+[ocr]
+text_color = "#c40000"
+stroke_color = "#c40000"
+fill_color = "#ffffff"
+# Use LLM to normalize OCR text using full image context.
+normalize = true
+# Optional: fixed font size (px), font family, and font file path (ttf/otf).
+# font_size = 18
+# font_family = "Hiragino Sans"
+# font_path = "/System/Library/Fonts/Hiragino Sans W3.ttc"
