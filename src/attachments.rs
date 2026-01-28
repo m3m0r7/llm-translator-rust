@@ -413,12 +413,8 @@ async fn translate_image_with_cache<P: Provider + Clone>(
             height: ocr_result.height,
             lines: &ocr_result.lines,
         };
-        match normalize_ocr_lines_with_llm(normalize_request, translator, options, cache).await
-        {
+        match normalize_ocr_lines_with_llm(normalize_request, translator, options, cache).await {
             Ok(outcome) => {
-                if let Some(kind) = outcome.image_kind.as_deref() {
-                    eprintln!("debug: ocr image kind = {}", kind);
-                }
                 ocr_result.lines = outcome.lines;
                 reading_map = outcome.readings;
             }
@@ -956,6 +952,7 @@ struct OcrRomanizeLineOutput {
 
 struct OcrNormalizeOutcome {
     lines: Vec<ocr::OcrLine>,
+    #[allow(dead_code)]
     image_kind: Option<String>,
     readings: HashMap<usize, String>,
 }
@@ -1098,10 +1095,7 @@ async fn romanize_lines_with_llm<P: Provider + Clone>(
     let payload = serde_json::json!({
         "lines": lines.iter().map(|(id, text)| serde_json::json!({"id": id, "text": text})).collect::<Vec<_>>()
     });
-    let user_input = format!(
-        "Lines (JSON):\n{}",
-        serde_json::to_string_pretty(&payload)?
-    );
+    let user_input = format!("Lines (JSON):\n{}", serde_json::to_string_pretty(&payload)?);
     let system_prompt = render_ocr_romanize_prompt(&options.source_lang);
     let tool = ocr_romanize_tool_spec();
     let response = translator

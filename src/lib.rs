@@ -154,9 +154,16 @@ pub async fn run(config: Config, input: Option<String>) -> Result<String> {
                 let translated = translated_output_path(Path::new(src_path), &output.mime)?;
                 fs::write(&translated, &output.bytes)
                     .with_context(|| "failed to write translated file")?;
-                translated.to_string_lossy().to_string()
+                translated
             } else {
-                dest_path.clone()
+                PathBuf::from(&dest_path)
+            };
+            let output_path = std::fs::canonicalize(&output_path).unwrap_or(output_path);
+            let output_text = if output.mime.starts_with("image/") {
+                let size_kb = output.bytes.len().div_ceil(1024);
+                format!("Created image {} ({}KB) !", output_path.display(), size_kb)
+            } else {
+                output_path.to_string_lossy().to_string()
             };
 
             let entry = model_registry::HistoryEntry {
@@ -172,7 +179,7 @@ pub async fn run(config: Config, input: Option<String>) -> Result<String> {
             }
 
             let execution = ExecutionOutput {
-                text: output_path,
+                text: output_text,
                 model: output.model,
                 usage: output.usage,
             };

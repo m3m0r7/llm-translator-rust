@@ -138,7 +138,7 @@ cat ./report.pdf | llm-translator-rust --data-mime pdf -l en
 ## モデル選択とキャッシュ
 
 - 既定の優先順: OpenAI → Gemini → Claude（最初に見つかった API キー）。
-- `-M/--model` は次の形式を受け付けます。
+- `-m/--model` は次の形式を受け付けます。
   - プロバイダ名のみ: `openai`, `gemini`, `claude`（下記の既定モデルを使用。なければチャット対応モデルの先頭）
   - `provider:model`: `openai:MODEL_ID`
   - モデル指定時は必ず `provider:` を付けてください。
@@ -230,14 +230,13 @@ eng = "英語"
 | フラグ | ロング | 説明 | 既定 |
 | --- | --- | --- | --- |
 | `-l` | `--lang` | 翻訳先言語 | `en` |
-| `-M` | `--model` | プロバイダ/モデル選択 | (自動) |
+| `-m` | `--model` | プロバイダ/モデル選択 | (自動) |
 | `-k` | `--key` | API キーを直接指定 | (env) |
 | `-f` | `--formal` | スタイルキー（`settings.toml` の `[formally]` 参照） | `formal` |
-| `-c` | `--source-lang` | 入力言語（ISO 639-1/2/3 または `auto`） | `auto` |
-|  | `--countery-language` | `--source-lang` の別名 |  |
+| `-L` | `--source-lang` | 入力言語（ISO 639-1/2/3 または `auto`） | `auto` |
 | `-s` | `--slang` | スラングのキーワードを許可 | `false` |
 | `-d` | `--data` | 添付ファイル（画像/doc/docx/pptx/xlsx/pdf/txt） |  |
-| `-m` | `--data-mime` | `--data` または stdin の MIME（`auto`, `image/*`, `pdf`, `doc`, `docx`, `docs`, `pptx`, `xlsx`, `txt`, `png`, `jpeg`, `gif`） | `auto` |
+| `-M` | `--data-mime` | `--data` または stdin の MIME（`auto`, `image/*`, `pdf`, `doc`, `docx`, `docs`, `pptx`, `xlsx`, `txt`, `png`, `jpeg`, `gif`） | `auto` |
 |  | `--show-enabled-languages` | 有効な翻訳言語を表示 |  |
 |  | `--show-enabled-styles` | 有効なスタイルキーを表示 |  |
 |  | `--show-models-list` | 取得済みモデル一覧を表示（provider:model） |  |
