@@ -138,7 +138,7 @@ Translated:
 ## Model selection & cache
 
 - Default provider priority: OpenAI → Gemini → Claude (first API key found).
-- `-M/--model` accepts:
+- `-m/--model` accepts:
   - Provider only: `openai`, `gemini`, `claude` (uses provider defaults below, if available)
   - Provider + model: `openai:MODEL_ID`
   - When specifying a model, always include the provider prefix.
@@ -230,14 +230,13 @@ eng = "英語"
 | Flag | Long | Description | Default |
 | --- | --- | --- | --- |
 | `-l` | `--lang` | Target language | `en` |
-| `-M` | `--model` | Provider/model selector | (auto) |
+| `-m` | `--model` | Provider/model selector | (auto) |
 | `-k` | `--key` | API key override | (env) |
 | `-f` | `--formal` | Formality key (from `settings.toml` `[formally]`) | `formal` |
-| `-c` | `--source-lang` | Source language (ISO 639-1/2/3 or `auto`) | `auto` |
-|  | `--countery-language` | Alias for `--source-lang` |  |
+| `-L` | `--source-lang` | Source language (ISO 639-1/2/3 or `auto`) | `auto` |
 | `-s` | `--slang` | Include slang keywords when appropriate | `false` |
 | `-d` | `--data` | File attachment (image/doc/docx/pptx/xlsx/pdf/txt) |  |
-| `-m` | `--data-mime` | Mime type for `--data` (or stdin) (`auto`, `image/*`, `pdf`, `doc`, `docx`, `docs`, `pptx`, `xlsx`, `txt`, `png`, `jpeg`, `gif`) | `auto` |
+| `-M` | `--data-mime` | Mime type for `--data` (or stdin) (`auto`, `image/*`, `pdf`, `doc`, `docx`, `docs`, `pptx`, `xlsx`, `txt`, `png`, `jpeg`, `gif`) | `auto` |
 |  | `--show-enabled-languages` | Show enabled translation languages |  |
 |  | `--show-enabled-styles` | Show enabled style keys |  |
 |  | `--show-models-list` | Show cached model list (provider:model) |  |

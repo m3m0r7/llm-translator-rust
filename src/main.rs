@@ -15,7 +15,7 @@ struct Cli {
     lang: String,
 
     /// Model name or provider:model (e.g. openai:MODEL_ID)
-    #[arg(short = 'M', long = "model")]
+    #[arg(short = 'm', long = "model")]
     model: Option<String>,
 
     /// API key (overrides environment variables)
@@ -27,12 +27,7 @@ struct Cli {
     formal: String,
 
     /// Source language (ISO 639-1/2/3). Use "auto" to detect.
-    #[arg(
-        short = 'c',
-        long = "source-lang",
-        alias = "countery-language",
-        default_value = "auto"
-    )]
+    #[arg(short = 'L', long = "source-lang", default_value = "auto")]
     source_lang: String,
 
     /// Enable slang keywords in the output
@@ -44,7 +39,7 @@ struct Cli {
     data: Option<String>,
 
     /// Mime type for --data (auto, image/*, pdf, doc, docx, docs, pptx, xlsx, txt)
-    #[arg(short = 'm', long = "data-mime")]
+    #[arg(short = 'M', long = "data-mime")]
     data_mime: Option<String>,
 
     /// Show enabled translation languages and exit
