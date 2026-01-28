@@ -108,12 +108,37 @@ echo Awesome | llm-translator-rust -l ja --slang
 
 # File translation
 cat foobar.txt | llm-translator-rust -l en
+
+# File attachment translation (image/doc/docx/pptx/xlsx/pdf/txt)
+llm-translator-rust --data ./slides.pptx --data-mime pptx -l en
+llm-translator-rust --data ./scan.png -l ja
+
+# Attachment via stdin (auto-detect or with --data-mime)
+cat ./scan.png | llm-translator-rust -l ja
+cat ./report.pdf | llm-translator-rust --data-mime pdf -l en
+
+# Image/PDF attachments are re-rendered with numbered overlays (path is returned).
+# The image height is extended and a footer list is added:
+# (N) original (reading): translated
+# - reading is a Latin-script pronunciation for non-Latin text (e.g., romaji/pinyin).
+# - identical translations share the same number.
+# When using --data with a file path, a sibling file named *_translated.<ext> is also written.
 ```
+
+## Image translation example
+
+Original:
+
+![Original image](docs/image.png)
+
+Translated:
+
+![Translated image](docs/image_translated.png)
 
 ## Model selection & cache
 
 - Default provider priority: OpenAI → Gemini → Claude (first API key found).
-- `-m/--model` accepts:
+- `-M/--model` accepts:
   - Provider only: `openai`, `gemini`, `claude` (uses provider defaults below, if available)
   - Provider + model: `openai:MODEL_ID`
   - When specifying a model, always include the provider prefix.
@@ -123,8 +148,17 @@ cat foobar.txt | llm-translator-rust -l en
 - Language validation uses the ISO 639 list from Wikipedia: https://en.wikipedia.org/wiki/List_of_ISO_639_language_codes
 - Model list is fetched from each provider’s Models API and cached for 24 hours.
 - Cache path:
-  - `$HOME/.cache/llm-translator-rust` (fallback: `./.cache/llm-translator-rust`)
+  - `~/.llm-translator/.cache/meta.json` (fallback: `./.llm-translator/.cache/meta.json`)
 - `--show-models-list` prints the cached list as `provider:model` per line.
+- When `--model` is omitted, `lastUsingModel` in `meta.json` is preferred (falls back to default resolution if missing or invalid).
+- Histories are stored in `meta.json`. Dest files are written to `~/.llm-translator-rust/.cache/dest/<md5>`.
+- Image/PDF attachments use OCR (tesseract), normalize OCR text with LLMs, and re-render a numbered overlay plus a footer list.
+- Office files (docx/xlsx/pptx) are rewritten by translating text nodes in the XML.
+- Output mime matches the input mime (e.g. png stays png, pdf stays pdf).
+- OCR languages are inferred from `--source-lang` and `--lang`.
+- Use `tesseract --list-langs` to see installed OCR language codes.
+- PDF OCR requires a PDF renderer (`mutool` or `pdftoppm` from poppler).
+- PDF output is rasterized (text is no longer selectable).
 
 Provider defaults:
 - OpenAI: `openai:gpt-5.1`
@@ -153,11 +187,21 @@ You can also pass `-r/--read-settings` to load an additional local TOML file (hi
 ```toml
 [system]
 languages = ["jpn", "eng", ...]
+histories = 10
 
 [formally]
 casual = "Use casual, natural everyday speech."
 formal = "Use polite, formal register suitable for professional contexts."
 ...
+
+[ocr]
+text_color = "#c40000"
+stroke_color = "#c40000"
+fill_color = "#ffffff"
+normalize = true
+# font_size = 18
+# font_family = "Hiragino Sans"
+# font_path = "/System/Library/Fonts/Hiragino Sans W3.ttc"
 ```
 
 ## Language Packs
@@ -186,17 +230,21 @@ eng = "英語"
 | Flag | Long | Description | Default |
 | --- | --- | --- | --- |
 | `-l` | `--lang` | Target language | `en` |
-| `-m` | `--model` | Provider/model selector | (auto) |
+| `-M` | `--model` | Provider/model selector | (auto) |
 | `-k` | `--key` | API key override | (env) |
 | `-f` | `--formal` | Formality key (from `settings.toml` `[formally]`) | `formal` |
 | `-c` | `--source-lang` | Source language (ISO 639-1/2/3 or `auto`) | `auto` |
 |  | `--countery-language` | Alias for `--source-lang` |  |
 | `-s` | `--slang` | Include slang keywords when appropriate | `false` |
+| `-d` | `--data` | File attachment (image/doc/docx/pptx/xlsx/pdf/txt) |  |
+| `-m` | `--data-mime` | Mime type for `--data` (or stdin) (`auto`, `image/*`, `pdf`, `doc`, `docx`, `docs`, `pptx`, `xlsx`, `txt`, `png`, `jpeg`, `gif`) | `auto` |
 |  | `--show-enabled-languages` | Show enabled translation languages |  |
 |  | `--show-enabled-styles` | Show enabled style keys |  |
 |  | `--show-models-list` | Show cached model list (provider:model) |  |
+|  | `--show-histories` | Show translation histories |  |
 |  | `--with-using-tokens` | Append token usage to output |  |
 |  | `--with-using-model` | Append model name to output |  |
+|  | `--debug-ocr` | Output OCR debug overlays/JSON for attachments |  |
 | `-r` | `--read-settings` | Read extra settings TOML file |  |
 | `-h` | `--help` | Show help |  |
 

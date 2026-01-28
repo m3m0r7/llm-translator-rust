@@ -1,8 +1,13 @@
 use anyhow::{anyhow, Context, Result};
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
+pub mod attachments;
+pub mod data;
 pub mod languages;
 mod model_registry;
+pub mod ocr;
 mod providers;
 pub mod settings;
 pub mod translations;
@@ -10,7 +15,7 @@ mod translator;
 
 pub use providers::{Claude, Gemini, OpenAI, Provider, ProviderKind, ProviderUsage};
 pub use translations::TranslateOptions;
-pub use translator::{ExecutionOutput, Translator};
+pub use translator::{ExecutionOutput, TranslationInput, Translator};
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -20,19 +25,26 @@ pub struct Config {
     pub formal: String,
     pub source_lang: String,
     pub slang: bool,
+    pub data: Option<String>,
+    pub data_mime: Option<String>,
+    pub data_attachment: Option<data::DataAttachment>,
     pub settings_path: Option<String>,
     pub show_enabled_languages: bool,
     pub show_enabled_styles: bool,
     pub show_models_list: bool,
+    pub show_histories: bool,
     pub with_using_tokens: bool,
     pub with_using_model: bool,
+    pub debug_ocr: bool,
 }
 
 pub async fn run(config: Config, input: Option<String>) -> Result<String> {
+    let mut config = config;
     let settings_path = config.settings_path.as_deref().map(Path::new);
     let settings = settings::load_settings(settings_path)?;
     let registry = languages::LanguageRegistry::load()?;
     let packs = languages::load_language_packs(&settings.system_languages)?;
+    let ocr_languages = resolve_ocr_languages(&settings, &config.source_lang, &config.lang)?;
 
     if config.show_enabled_languages || config.show_enabled_styles {
         return Ok(format_show_output(&config, &settings, &registry, &packs));
@@ -40,10 +52,30 @@ pub async fn run(config: Config, input: Option<String>) -> Result<String> {
     if config.show_models_list {
         return show_models_list(&config).await;
     }
+    if config.show_histories {
+        return show_histories();
+    }
+
+    if config.data.is_none() && config.data_attachment.is_none() && config.data_mime.is_some() {
+        return Err(anyhow!("--data-mime requires --data or stdin"));
+    }
+
+    let data_attachment = if let Some(attachment) = config.data_attachment.take() {
+        Some(attachment)
+    } else if let Some(path) = config.data.as_deref() {
+        Some(data::load_attachment(
+            Path::new(path),
+            config.data_mime.as_deref(),
+        )?)
+    } else {
+        None
+    };
+    let attachment_mime = data_attachment.as_ref().map(|data| data.mime.clone());
+    let history_src = config.data.clone();
 
     let input = input.unwrap_or_default();
     let input = input.trim();
-    if input.is_empty() {
+    if input.is_empty() && data_attachment.is_none() {
         return Err(anyhow!("stdin is empty"));
     }
     let formality = config.formal.trim().to_string();
@@ -52,9 +84,18 @@ pub async fn run(config: Config, input: Option<String>) -> Result<String> {
     }
     let with_using_model = config.with_using_model;
     let with_using_tokens = config.with_using_tokens;
+    let input_text = input.to_string();
+    let history_limit = settings.history_limit;
 
-    let selection =
-        providers::resolve_provider_selection(config.model.as_deref(), config.key.as_deref())?;
+    let selection = if let Some(model_arg) = config.model.as_deref() {
+        providers::resolve_provider_selection(Some(model_arg), config.key.as_deref())?
+    } else {
+        match model_registry::get_last_using_model()? {
+            Some(last) => providers::resolve_provider_selection(Some(&last), config.key.as_deref())
+                .or_else(|_| providers::resolve_provider_selection(None, config.key.as_deref()))?,
+            None => providers::resolve_provider_selection(None, config.key.as_deref())?,
+        }
+    };
     let key = providers::resolve_key(selection.provider, config.key.as_deref())
         .with_context(|| "no API key found for selected provider")?;
 
@@ -65,9 +106,11 @@ pub async fn run(config: Config, input: Option<String>) -> Result<String> {
     )
     .await
     .with_context(|| "failed to resolve model")?;
+    let history_model = model.clone();
 
     validate_lang_codes(&config, &registry)?;
 
+    model_registry::set_last_using_model(selection.provider, &model)?;
     let provider = providers::build_provider(selection.provider, key, model);
     let translator = Translator::new(provider, settings, registry);
 
@@ -77,14 +120,286 @@ pub async fn run(config: Config, input: Option<String>) -> Result<String> {
         source_lang: config.source_lang,
         slang: config.slang,
     };
+    let user_text = if data_attachment.is_some() {
+        if input.is_empty() {
+            format!("Translate the attached file into {}.", options.lang)
+        } else {
+            format!(
+                "Translate the attached file into {}.\n\nAdditional instructions:\n{}",
+                options.lang, input
+            )
+        }
+    } else {
+        input.to_string()
+    };
 
-    let execution = translator.exec(input, options).await?;
+    if let Some(data) = data_attachment.as_ref() {
+        if let Some(output) = attachments::translate_attachment(
+            data,
+            &ocr_languages,
+            &translator,
+            &options,
+            config.debug_ocr,
+            history_src.as_deref().map(Path::new),
+        )
+        .await?
+        {
+            let datetime = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs()
+                .to_string();
+            let dest_path = model_registry::write_history_dest_bytes(&output.bytes, &datetime)?;
+            let output_path = if let Some(src_path) = history_src.as_deref() {
+                let translated = translated_output_path(Path::new(src_path), &output.mime)?;
+                fs::write(&translated, &output.bytes)
+                    .with_context(|| "failed to write translated file")?;
+                translated.to_string_lossy().to_string()
+            } else {
+                dest_path.clone()
+            };
 
-    Ok(format_execution_output(
-        &execution,
-        with_using_model,
-        with_using_tokens,
-    ))
+            let entry = model_registry::HistoryEntry {
+                datetime,
+                model: format!("{}:{}", selection.provider.as_str(), history_model),
+                mime: output.mime.clone(),
+                kind: model_registry::HistoryType::Attachment,
+                src: history_src.clone().unwrap_or_else(|| "stdin".to_string()),
+                dest: dest_path.clone(),
+            };
+            if let Err(err) = model_registry::record_history(entry, history_limit) {
+                eprintln!("warning: failed to record history: {}", err);
+            }
+
+            let execution = ExecutionOutput {
+                text: output_path,
+                model: output.model,
+                usage: output.usage,
+            };
+
+            return Ok(format_execution_output(
+                &execution,
+                with_using_model,
+                with_using_tokens,
+            ));
+        }
+    }
+
+    let execution = translator
+        .exec_with_data(
+            TranslationInput {
+                text: user_text,
+                data: data_attachment,
+            },
+            options,
+        )
+        .await?;
+
+    let output = format_execution_output(&execution, with_using_model, with_using_tokens);
+
+    if let Err(err) = record_history(
+        selection.provider,
+        &history_model,
+        history_src.as_deref(),
+        history_limit,
+        &input_text,
+        attachment_mime.as_deref(),
+        &execution.text,
+    ) {
+        eprintln!("warning: failed to record history: {}", err);
+    }
+
+    Ok(output)
+}
+
+fn translated_output_path(src: &Path, mime: &str) -> Result<PathBuf> {
+    let ext = data::extension_from_mime(mime)
+        .ok_or_else(|| anyhow!("unsupported output mime '{}'", mime))?;
+    let parent = src.parent().unwrap_or_else(|| Path::new("."));
+    let stem = src
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("translated");
+    let filename = format!("{}_translated.{}", stem, ext);
+    Ok(parent.join(filename))
+}
+
+fn show_histories() -> Result<String> {
+    let histories = model_registry::get_histories()?;
+    if histories.is_empty() {
+        return Ok("histories: 0".to_string());
+    }
+    let mut lines = Vec::new();
+    lines.push(format!("histories: {}", histories.len()));
+    for (idx, entry) in histories.iter().enumerate() {
+        lines.push(format!("[{}]", idx + 1));
+        lines.push(format!("  datetime: {}", entry.datetime));
+        lines.push(format!("  type: {}", entry.kind.as_str()));
+        lines.push(format!("  model: {}", entry.model));
+        lines.push(format!("  mime: {}", entry.mime));
+        lines.push(format!("  src: {}", summarize_history_value(&entry.src)));
+        lines.push(format!("  dest: {}", summarize_history_value(&entry.dest)));
+    }
+    Ok(lines.join("\n"))
+}
+
+fn summarize_history_value(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return "(empty)".to_string();
+    }
+    let normalized = trimmed.replace('\n', "\\n").replace('\r', "\\r");
+    let max_len = 160usize;
+    if normalized.chars().count() > max_len {
+        let preview: String = normalized.chars().take(max_len).collect();
+        format!("{}...", preview)
+    } else {
+        normalized
+    }
+}
+
+fn record_history(
+    provider: ProviderKind,
+    model: &str,
+    src_path: Option<&str>,
+    history_limit: usize,
+    input_text: &str,
+    attachment_mime: Option<&str>,
+    output_text: &str,
+) -> Result<()> {
+    let datetime = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+        .to_string();
+    let full_model = format!("{}:{}", provider.as_str(), model);
+    let (kind, mime, src, dest) = if let Some(mime) = attachment_mime {
+        let src = src_path
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "stdin".to_string());
+        let dest = model_registry::write_history_dest(output_text, &datetime)?;
+        (
+            model_registry::HistoryType::Attachment,
+            mime.to_string(),
+            src,
+            dest,
+        )
+    } else {
+        (
+            model_registry::HistoryType::Text,
+            data::TEXT_MIME.to_string(),
+            input_text.to_string(),
+            output_text.to_string(),
+        )
+    };
+
+    let entry = model_registry::HistoryEntry {
+        datetime,
+        model: full_model,
+        mime,
+        kind,
+        src,
+        dest,
+    };
+    model_registry::record_history(entry, history_limit)
+}
+
+fn resolve_ocr_languages(
+    _settings: &settings::Settings,
+    source_lang: &str,
+    target_lang: &str,
+) -> Result<String> {
+    let mut langs = Vec::new();
+    let source_trimmed = source_lang.trim();
+    let mut required: Option<String> = None;
+    if !source_trimmed.eq_ignore_ascii_case("auto") {
+        if let Some(mapped) = map_lang_to_tesseract(source_trimmed) {
+            required = Some(mapped.to_string());
+            langs.push(mapped.to_string());
+        } else if !source_trimmed.is_empty() {
+            required = Some(source_trimmed.to_string());
+            langs.push(source_trimmed.to_string());
+        }
+    }
+    let target_trimmed = target_lang.trim();
+    if !target_trimmed.is_empty() {
+        if let Some(mapped) = map_lang_to_tesseract(target_trimmed) {
+            langs.push(mapped.to_string());
+        } else {
+            langs.push(target_trimmed.to_string());
+        }
+    }
+
+    langs.sort();
+    langs.dedup();
+    if !langs.is_empty() {
+        if let Ok(available) = ocr::list_tesseract_languages() {
+            if let Some(req) = required.as_deref() {
+                if !available.iter().any(|value| value == req) {
+                    return Err(anyhow!(
+                        "tesseract language '{}' is not installed (available: {}). Install the language pack or change --source-lang.",
+                        req,
+                        available.join(", ")
+                    ));
+                }
+            }
+            let mut chosen = Vec::new();
+            let mut missing = Vec::new();
+            for lang in &langs {
+                if available.iter().any(|value| value == lang) {
+                    chosen.push(lang.clone());
+                } else {
+                    missing.push(lang.clone());
+                }
+            }
+            if !missing.is_empty() {
+                eprintln!(
+                    "warning: tesseract language(s) not available: {} (available: {})",
+                    missing.join(", "),
+                    available.join(", ")
+                );
+            }
+            if !chosen.is_empty() {
+                return Ok(chosen.join("+"));
+            }
+        }
+        return Ok(langs.join("+"));
+    }
+
+    Ok(guess_default_ocr_languages())
+}
+
+fn guess_default_ocr_languages() -> String {
+    if let Ok(langs) = ocr::list_tesseract_languages() {
+        if langs.iter().any(|lang| lang == "jpn") {
+            return "jpn+eng".to_string();
+        }
+        if langs.iter().any(|lang| lang == "eng") {
+            return "eng".to_string();
+        }
+        if let Some(first) = langs.first() {
+            return first.clone();
+        }
+    }
+    "eng".to_string()
+}
+
+fn map_lang_to_tesseract(code: &str) -> Option<&'static str> {
+    let lower = code.trim().to_lowercase();
+    match lower.as_str() {
+        "ja" | "jpn" => Some("jpn"),
+        "en" | "eng" => Some("eng"),
+        "zh" | "zho" | "zh-cn" | "zh-hans" => Some("chi_sim"),
+        "zh-hant" | "zh-tw" => Some("chi_tra"),
+        "ko" | "kor" => Some("kor"),
+        "fr" | "fra" => Some("fra"),
+        "es" | "spa" => Some("spa"),
+        "de" | "deu" => Some("deu"),
+        "it" | "ita" => Some("ita"),
+        "pt" | "por" => Some("por"),
+        "ru" | "rus" => Some("rus"),
+        _ => None,
+    }
 }
 
 fn format_execution_output(

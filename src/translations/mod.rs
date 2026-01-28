@@ -1,10 +1,11 @@
 use anyhow::{anyhow, Context, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs;
 use std::path::PathBuf;
 use tera::{Context as TeraContext, Tera};
 
+use crate::data::DataInfo;
 use crate::languages::{LanguagePack, LanguageRegistry};
 use crate::providers::ToolSpec;
 use crate::settings::Settings;
@@ -22,8 +23,24 @@ pub struct TranslateOptions {
 #[derive(Debug, Clone)]
 pub struct TranslationResult {
     pub translation: String,
+    pub segments: Vec<Segment>,
     pub source_language: String,
     pub target_language: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Segment {
+    pub original: String,
+    pub translated: String,
+    pub bbox: BBox,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct BBox {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
 }
 
 pub fn tool_spec(tool_name: &str) -> ToolSpec {
@@ -31,6 +48,27 @@ pub fn tool_spec(tool_name: &str) -> ToolSpec {
         "type": "object",
         "properties": {
             "translation": {"type": "string"},
+            "segments": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "original": {"type": "string"},
+                        "translated": {"type": "string"},
+                        "bbox": {
+                            "type": "object",
+                            "properties": {
+                                "x": {"type": "number"},
+                                "y": {"type": "number"},
+                                "w": {"type": "number"},
+                                "h": {"type": "number"}
+                            },
+                            "required": ["x", "y", "w", "h"]
+                        }
+                    },
+                    "required": ["original", "translated", "bbox"]
+                }
+            },
             "source_language": {"type": "string"},
             "target_language": {"type": "string"},
             "style": {"type": "string"},
@@ -51,6 +89,15 @@ pub fn render_system_prompt(
     tool_name: &str,
     settings: &Settings,
 ) -> Result<String> {
+    render_system_prompt_with_data(options, tool_name, settings, None)
+}
+
+pub fn render_system_prompt_with_data(
+    options: &TranslateOptions,
+    tool_name: &str,
+    settings: &Settings,
+    data: Option<&DataInfo>,
+) -> Result<String> {
     let template = load_prompt_template("system_prompt.tera")?;
     let mut context = TeraContext::new();
     let style = options.formality.trim();
@@ -61,6 +108,11 @@ pub fn render_system_prompt(
     context.insert("style_guidance", &guidance);
     context.insert("slang", &options.slang);
     context.insert("tool_name", tool_name);
+    context.insert("has_data", &data.is_some());
+    if let Some(data) = data {
+        context.insert("data_mime", data.mime.as_str());
+        context.insert("data_name", &data.name);
+    }
 
     Tera::one_off(&template, &context, false).with_context(|| "failed to render system prompt")
 }
@@ -69,13 +121,16 @@ pub fn parse_tool_args(
     value: Value,
     options: &TranslateOptions,
     registry: &LanguageRegistry,
+    image_mode: bool,
 ) -> Result<TranslationResult> {
     let expected = ExpectedMeta::from_options(options);
     let args: ToolArgs = serde_json::from_value(value)?;
-    validate_tool_args(&args, &expected, registry)?;
+    validate_tool_args(&args, &expected, registry, image_mode)?;
+    let segments = args.segments.unwrap_or_default();
 
     Ok(TranslationResult {
         translation: args.translation,
+        segments,
         source_language: normalize_lang_code(&args.source_language),
         target_language: normalize_lang_code(&args.target_language),
     })
@@ -98,6 +153,8 @@ fn prompt_path(name: &str) -> Result<PathBuf> {
 #[derive(Debug, Deserialize)]
 struct ToolArgs {
     translation: String,
+    #[serde(default)]
+    segments: Option<Vec<Segment>>,
     source_language: String,
     target_language: String,
     style: String,
@@ -127,8 +184,11 @@ fn validate_tool_args(
     args: &ToolArgs,
     expected: &ExpectedMeta,
     registry: &LanguageRegistry,
+    image_mode: bool,
 ) -> Result<()> {
-    if args.translation.trim().is_empty() {
+    let segments = args.segments.as_deref().unwrap_or(&[]);
+    let has_segments = !segments.is_empty();
+    if args.translation.trim().is_empty() && !has_segments {
         return Err(anyhow!("translation is empty"));
     }
     if args.source_language.trim().is_empty() {
@@ -142,7 +202,10 @@ fn validate_tool_args(
     }
 
     if expected.source_language.trim().eq_ignore_ascii_case("auto") {
-        if !is_valid_lang_code(&args.source_language, registry) {
+        let source = args.source_language.trim();
+        if is_auto_source_placeholder(source) {
+            // allow undetermined or auto markers when source is auto
+        } else if !is_valid_lang_code(source, registry) {
             return Err(anyhow!(
                 "source_language must be ISO 639 code (or zho-hans/zho-hant) when auto-detected (got '{}')",
                 args.source_language
@@ -183,7 +246,47 @@ fn validate_tool_args(
             args.slang
         ));
     }
+
+    if image_mode && !has_segments {
+        return Err(anyhow!(
+            "image attachments require segments with bbox (got none)"
+        ));
+    }
+
+    for (idx, segment) in segments.iter().enumerate() {
+        if segment.original.trim().is_empty() {
+            return Err(anyhow!("segment {} original is empty", idx + 1));
+        }
+        if segment.translated.trim().is_empty() {
+            return Err(anyhow!("segment {} translated is empty", idx + 1));
+        }
+        validate_bbox(&segment.bbox).with_context(|| format!("segment {}", idx + 1))?;
+    }
     Ok(())
+}
+
+fn validate_bbox(bbox: &BBox) -> Result<()> {
+    let (x, y, w, h) = (bbox.x, bbox.y, bbox.w, bbox.h);
+    if x < 0.0 || y < 0.0 || w <= 0.0 || h <= 0.0 {
+        return Err(anyhow!("bbox values must be positive"));
+    }
+    if x > 1.0 || y > 1.0 || w > 1.0 || h > 1.0 {
+        return Err(anyhow!("bbox values must be normalized 0..1"));
+    }
+    if x + w > 1.0 || y + h > 1.0 {
+        return Err(anyhow!("bbox must fit within normalized bounds"));
+    }
+    Ok(())
+}
+
+#[derive(Debug, Serialize)]
+struct SegmentOutput<'a> {
+    segments: &'a [Segment],
+}
+
+pub fn format_segments_output(segments: &[Segment]) -> Result<String> {
+    serde_json::to_string_pretty(&SegmentOutput { segments })
+        .with_context(|| "failed to format segments output")
 }
 
 fn is_valid_lang_code(code: &str, registry: &LanguageRegistry) -> bool {
@@ -241,4 +344,12 @@ fn normalize_lang_code(code: &str) -> String {
 
 fn eq_insensitive(left: &str, right: &str) -> bool {
     left.trim().eq_ignore_ascii_case(right.trim())
+}
+
+fn is_auto_source_placeholder(value: &str) -> bool {
+    let lower = value.trim().to_lowercase();
+    matches!(
+        lower.as_str(),
+        "auto" | "und" | "unknown" | "unk" | "mul" | "zxx"
+    )
 }

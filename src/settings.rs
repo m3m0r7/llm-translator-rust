@@ -4,21 +4,59 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct Settings {
     pub formally: HashMap<String, String>,
     pub system_languages: Vec<String>,
+    pub history_limit: usize,
+    pub overlay_text_color: String,
+    pub overlay_stroke_color: String,
+    pub overlay_fill_color: String,
+    pub overlay_font_size: Option<f32>,
+    pub overlay_font_family: Option<String>,
+    pub overlay_font_path: Option<String>,
+    pub ocr_normalize: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            formally: HashMap::new(),
+            system_languages: Vec::new(),
+            history_limit: 10,
+            overlay_text_color: "#c40000".to_string(),
+            overlay_stroke_color: "#c40000".to_string(),
+            overlay_fill_color: "#ffffff".to_string(),
+            overlay_font_size: None,
+            overlay_font_family: None,
+            overlay_font_path: None,
+            ocr_normalize: true,
+        }
+    }
 }
 
 #[derive(Debug, Default, Deserialize)]
 struct SettingsFile {
     formally: Option<HashMap<String, String>>,
     system: Option<SystemSettings>,
+    ocr: Option<OcrSettings>,
 }
 
 #[derive(Debug, Default, Deserialize)]
 struct SystemSettings {
     languages: Option<Vec<String>>,
+    histories: Option<usize>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct OcrSettings {
+    text_color: Option<String>,
+    stroke_color: Option<String>,
+    fill_color: Option<String>,
+    font_size: Option<f32>,
+    font_family: Option<String>,
+    font_path: Option<String>,
+    normalize: Option<bool>,
 }
 
 pub fn load_settings(extra_path: Option<&Path>) -> Result<Settings> {
@@ -63,6 +101,46 @@ impl Settings {
         if let Some(system) = incoming.system {
             if let Some(languages) = system.languages {
                 self.system_languages = languages;
+            }
+            if let Some(limit) = system.histories {
+                if limit > 0 {
+                    self.history_limit = limit;
+                }
+            }
+        }
+        if let Some(ocr) = incoming.ocr {
+            if let Some(color) = ocr.text_color {
+                if !color.trim().is_empty() {
+                    self.overlay_text_color = color;
+                }
+            }
+            if let Some(color) = ocr.stroke_color {
+                if !color.trim().is_empty() {
+                    self.overlay_stroke_color = color;
+                }
+            }
+            if let Some(color) = ocr.fill_color {
+                if !color.trim().is_empty() {
+                    self.overlay_fill_color = color;
+                }
+            }
+            if let Some(size) = ocr.font_size {
+                if size > 0.0 {
+                    self.overlay_font_size = Some(size);
+                }
+            }
+            if let Some(family) = ocr.font_family {
+                if !family.trim().is_empty() {
+                    self.overlay_font_family = Some(family);
+                }
+            }
+            if let Some(path) = ocr.font_path {
+                if !path.trim().is_empty() {
+                    self.overlay_font_path = Some(path);
+                }
+            }
+            if let Some(normalize) = ocr.normalize {
+                self.ocr_normalize = normalize;
             }
         }
     }

@@ -1,9 +1,12 @@
 use anyhow::anyhow;
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine;
 use serde::Deserialize;
 use serde_json::json;
 
 use super::{
-    Message, MessageRole, Provider, ProviderFuture, ProviderResponse, ProviderUsage, ToolSpec,
+    Message, MessagePart, MessageRole, Provider, ProviderFuture, ProviderResponse, ProviderUsage,
+    ToolSpec,
 };
 
 const DEFAULT_BASE_URL: &str = "https://api.anthropic.com/v1/messages";
@@ -51,6 +54,11 @@ impl Provider for Claude {
         self
     }
 
+    fn append_user_data(mut self, data: crate::data::DataAttachment) -> Self {
+        self.messages.push(Message::user_data(data));
+        self
+    }
+
     fn register_tool(mut self, tool: ToolSpec) -> Self {
         self.tools.push(tool);
         self
@@ -73,18 +81,49 @@ impl Provider for Claude {
 
             let system = system_inputs
                 .into_iter()
-                .map(|message| message.content)
+                .flat_map(|message| message.parts)
+                .filter_map(|part| match part {
+                    MessagePart::Text(text) => Some(text),
+                    MessagePart::Data(_) => None,
+                })
                 .collect::<Vec<_>>()
                 .join("\n\n");
 
             let messages = user_inputs
                 .into_iter()
                 .map(|message| {
+                    let content = message
+                        .parts
+                        .into_iter()
+                        .map(|part| match part {
+                            MessagePart::Text(text) => json!({"type": "text", "text": text}),
+                            MessagePart::Data(data) => {
+                                let encoded = BASE64.encode(&data.bytes);
+                                if data.mime.starts_with("image/") {
+                                    json!({
+                                        "type": "image",
+                                        "source": {
+                                            "type": "base64",
+                                            "media_type": data.mime,
+                                            "data": encoded
+                                        }
+                                    })
+                                } else {
+                                    json!({
+                                        "type": "document",
+                                        "source": {
+                                            "type": "base64",
+                                            "media_type": data.mime,
+                                            "data": encoded
+                                        }
+                                    })
+                                }
+                            }
+                        })
+                        .collect::<Vec<_>>();
                     json!({
                         "role": "user",
-                        "content": [
-                            {"type": "text", "text": message.content}
-                        ]
+                        "content": content
                     })
                 })
                 .collect::<Vec<_>>();

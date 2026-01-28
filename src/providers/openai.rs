@@ -1,9 +1,12 @@
 use anyhow::{anyhow, Context, Result};
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine;
 use serde::Deserialize;
 use serde_json::json;
 
 use super::{
-    Message, MessageRole, Provider, ProviderFuture, ProviderResponse, ProviderUsage, ToolSpec,
+    Message, MessagePart, MessageRole, Provider, ProviderFuture, ProviderResponse, ProviderUsage,
+    ToolSpec,
 };
 
 const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
@@ -54,6 +57,11 @@ impl Provider for OpenAI {
         self
     }
 
+    fn append_user_data(mut self, data: crate::data::DataAttachment) -> Self {
+        self.messages.push(Message::user_data(data));
+        self
+    }
+
     fn register_tool(mut self, tool: ToolSpec) -> Self {
         self.tools.push(tool);
         self
@@ -62,59 +70,179 @@ impl Provider for OpenAI {
     fn call_tool(self, tool_name: &str) -> ProviderFuture {
         let tool_name = tool_name.to_string();
         Box::pin(async move {
-            let tool = self.find_tool(&tool_name)?;
-            let client = reqwest::Client::new();
-            let url = format!("{}/chat/completions", base_url());
-
-            let messages = self
-                .messages
-                .iter()
-                .map(|message| match message.role {
-                    MessageRole::System => json!({"role": "system", "content": message.content}),
-                    MessageRole::User => json!({"role": "user", "content": message.content}),
-                })
-                .collect::<Vec<_>>();
-
-            let body = json!({
-                "model": self.model,
-                "messages": messages,
-                "tools": [
-                    {
-                        "type": "function",
-                        "function": {
-                            "name": tool.name,
-                            "description": tool.description,
-                            "parameters": tool.parameters
-                        }
-                    }
-                ],
-                "tool_choice": {"type": "function", "function": {"name": tool.name}}
-            });
-
-            let response = client
-                .post(url)
-                .bearer_auth(self.key)
-                .json(&body)
-                .send()
-                .await?;
-
-            let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            if !status.is_success() {
-                return Err(anyhow!(
-                    "OpenAI API error ({}): {}",
-                    status,
-                    extract_openai_error(&text).unwrap_or(text)
-                ));
+            let tool = self.find_tool(&tool_name)?.clone();
+            if has_data(&self.messages) {
+                call_with_responses(self, tool, &tool_name).await
+            } else {
+                call_with_chat_completions(self, tool, &tool_name).await
             }
-
-            extract_tool_response(&text, &tool_name, &self.model)
         })
     }
 }
 
 fn base_url() -> String {
     std::env::var("OPENAI_BASE_URL").unwrap_or_else(|_| DEFAULT_BASE_URL.to_string())
+}
+
+fn message_text(message: &Message) -> Result<String> {
+    let mut parts = Vec::new();
+    for part in &message.parts {
+        match part {
+            MessagePart::Text(text) => parts.push(text.as_str()),
+            MessagePart::Data(_) => {
+                return Err(anyhow!("binary data cannot be sent via chat completions"))
+            }
+        }
+    }
+    Ok(parts.join("\n\n"))
+}
+
+fn has_data(messages: &[Message]) -> bool {
+    messages.iter().any(Message::has_data)
+}
+
+fn system_text(messages: &[Message]) -> Result<String> {
+    let mut parts = Vec::new();
+    for message in messages {
+        if matches!(message.role, MessageRole::System) {
+            parts.push(message_text(message)?);
+        }
+    }
+    Ok(parts.join("\n\n"))
+}
+
+async fn call_with_chat_completions(
+    provider: OpenAI,
+    tool: ToolSpec,
+    tool_name: &str,
+) -> Result<ProviderResponse> {
+    let client = reqwest::Client::new();
+    let url = format!("{}/chat/completions", base_url());
+
+    let messages = provider
+        .messages
+        .iter()
+        .map(|message| match message.role {
+            MessageRole::System => {
+                let content = message_text(message)?;
+                Ok(json!({"role": "system", "content": content}))
+            }
+            MessageRole::User => {
+                let content = message_text(message)?;
+                Ok(json!({"role": "user", "content": content}))
+            }
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    let body = json!({
+        "model": provider.model,
+        "messages": messages,
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.parameters
+                }
+            }
+        ],
+        "tool_choice": {"type": "function", "function": {"name": tool.name}}
+    });
+
+    let response = client
+        .post(url)
+        .bearer_auth(provider.key)
+        .json(&body)
+        .send()
+        .await?;
+
+    let status = response.status();
+    let text = response.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(anyhow!(
+            "OpenAI API error ({}): {}",
+            status,
+            extract_openai_error(&text).unwrap_or(text)
+        ));
+    }
+
+    extract_tool_response(&text, tool_name, &provider.model)
+}
+
+async fn call_with_responses(
+    provider: OpenAI,
+    tool: ToolSpec,
+    tool_name: &str,
+) -> Result<ProviderResponse> {
+    let client = reqwest::Client::new();
+    let url = format!("{}/responses", base_url());
+
+    let system = system_text(&provider.messages)?;
+    let input = provider
+        .messages
+        .iter()
+        .filter(|message| matches!(message.role, MessageRole::User))
+        .map(|message| {
+            let parts = message
+                .parts
+                .iter()
+                .map(|part| match part {
+                    MessagePart::Text(text) => json!({"type": "input_text", "text": text}),
+                    MessagePart::Data(data) => {
+                        let encoded = BASE64.encode(&data.bytes);
+                        if data.mime.starts_with("image/") {
+                            let url = format!("data:{};base64,{}", data.mime, encoded);
+                            json!({"type": "input_image", "image_url": url})
+                        } else {
+                            let filename = data
+                                .name
+                                .clone()
+                                .unwrap_or_else(|| "attachment".to_string());
+                            json!({"type": "input_file", "filename": filename, "file_data": encoded})
+                        }
+                    }
+                })
+                .collect::<Vec<_>>();
+            json!({"role": "user", "content": parts})
+        })
+        .collect::<Vec<_>>();
+
+    let mut body = json!({
+        "model": provider.model,
+        "input": input,
+        "tools": [
+            {
+                "type": "function",
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": tool.parameters
+            }
+        ]
+    });
+
+    if !system.trim().is_empty() {
+        body["instructions"] = json!(system);
+    }
+
+    let response = client
+        .post(url)
+        .bearer_auth(provider.key)
+        .json(&body)
+        .send()
+        .await?;
+
+    let status = response.status();
+    let text = response.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(anyhow!(
+            "OpenAI API error ({}): {}",
+            status,
+            extract_openai_error(&text).unwrap_or(text)
+        ));
+    }
+
+    extract_response_tool_call(&text, tool_name, &provider.model)
 }
 
 fn extract_tool_response(
@@ -198,6 +326,38 @@ fn format_error_parts(
     }
 }
 
+fn extract_response_tool_call(
+    text: &str,
+    tool_name: &str,
+    fallback_model: &str,
+) -> Result<ProviderResponse> {
+    let payload: ResponseApiResponse =
+        serde_json::from_str(text).with_context(|| "failed to parse OpenAI response JSON")?;
+    let tool_call = payload
+        .output
+        .iter()
+        .find_map(|item| match item {
+            ResponseOutputItem::FunctionCall { name, arguments } if name == tool_name => {
+                Some(arguments)
+            }
+            _ => None,
+        })
+        .ok_or_else(|| anyhow!("no tool call returned from OpenAI"))?;
+
+    let args: serde_json::Value =
+        serde_json::from_str(tool_call).with_context(|| "failed to parse OpenAI tool arguments")?;
+    let model = payload
+        .model
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| Some(fallback_model.to_string()));
+    let usage = payload.usage.map(|usage| ProviderUsage {
+        prompt_tokens: usage.input_tokens,
+        completion_tokens: usage.output_tokens,
+        total_tokens: usage.total_tokens,
+    });
+    Ok(ProviderResponse { args, model, usage })
+}
+
 #[derive(Debug, Deserialize)]
 struct OpenAIResponse {
     model: Option<String>,
@@ -231,6 +391,30 @@ struct OpenAIFunctionCall {
 struct OpenAIUsage {
     prompt_tokens: Option<u64>,
     completion_tokens: Option<u64>,
+    total_tokens: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ResponseApiResponse {
+    model: Option<String>,
+    #[serde(default)]
+    output: Vec<ResponseOutputItem>,
+    usage: Option<ResponseApiUsage>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type")]
+enum ResponseOutputItem {
+    #[serde(rename = "function_call")]
+    FunctionCall { name: String, arguments: String },
+    #[serde(other)]
+    Other,
+}
+
+#[derive(Debug, Deserialize)]
+struct ResponseApiUsage {
+    input_tokens: Option<u64>,
+    output_tokens: Option<u64>,
     total_tokens: Option<u64>,
 }
 

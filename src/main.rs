@@ -1,6 +1,6 @@
-use std::io::{self, Read};
+use std::io::{self, IsTerminal, Read};
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use clap::Parser;
 
 #[derive(Parser, Debug)]
@@ -15,7 +15,7 @@ struct Cli {
     lang: String,
 
     /// Model name or provider:model (e.g. openai:MODEL_ID)
-    #[arg(short = 'm', long = "model")]
+    #[arg(short = 'M', long = "model")]
     model: Option<String>,
 
     /// API key (overrides environment variables)
@@ -39,6 +39,14 @@ struct Cli {
     #[arg(short = 's', long = "slang")]
     slang: bool,
 
+    /// File to translate (image/doc/docx/pptx/xlsx/pdf/txt)
+    #[arg(short = 'd', long = "data")]
+    data: Option<String>,
+
+    /// Mime type for --data (auto, image/*, pdf, doc, docx, docs, pptx, xlsx, txt)
+    #[arg(short = 'm', long = "data-mime")]
+    data_mime: Option<String>,
+
     /// Show enabled translation languages and exit
     #[arg(long = "show-enabled-languages")]
     show_enabled_languages: bool,
@@ -51,6 +59,10 @@ struct Cli {
     #[arg(long = "show-models-list")]
     show_models_list: bool,
 
+    /// Show translation histories and exit
+    #[arg(long = "show-histories")]
+    show_histories: bool,
+
     /// Append token usage to output
     #[arg(long = "with-using-tokens")]
     with_using_tokens: bool,
@@ -62,21 +74,78 @@ struct Cli {
     /// Read extra settings from a local TOML file
     #[arg(short = 'r', long = "read-settings")]
     read_settings: Option<String>,
+
+    /// Output OCR debug overlays for attachments
+    #[arg(long = "debug-ocr")]
+    debug_ocr: bool,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    let needs_input =
-        !(cli.show_enabled_languages || cli.show_enabled_styles || cli.show_models_list);
-    let input = if needs_input {
-        let mut buffer = String::new();
-        io::stdin().read_to_string(&mut buffer)?;
-        Some(buffer)
+    let needs_input = !(cli.show_enabled_languages
+        || cli.show_enabled_styles
+        || cli.show_models_list
+        || cli.show_histories);
+    let stdin_bytes = if needs_input {
+        if cli.data.is_some() && io::stdin().is_terminal() {
+            None
+        } else {
+            let mut buffer = Vec::new();
+            io::stdin().read_to_end(&mut buffer)?;
+            Some(buffer)
+        }
     } else {
         None
     };
+
+    let mut input = None;
+    let mut stdin_attachment = None;
+    if let Some(bytes) = stdin_bytes {
+        if cli.data.is_some() {
+            if !bytes.is_empty() {
+                let text = String::from_utf8(bytes).map_err(|_| {
+                    anyhow!("stdin must be UTF-8 text when using --data (binary detected)")
+                })?;
+                input = Some(text);
+            }
+        } else if !bytes.is_empty() {
+            let mime_hint = cli.data_mime.as_deref();
+            let mime_forced = mime_hint
+                .map(|value| !value.trim().eq_ignore_ascii_case("auto"))
+                .unwrap_or(false);
+            if mime_forced {
+                stdin_attachment = Some(llm_translator_rust::data::load_attachment_from_bytes(
+                    bytes, mime_hint, None,
+                )?);
+            } else if let Ok(text) = std::str::from_utf8(&bytes) {
+                if let Some(mime) = llm_translator_rust::data::sniff_mime(&bytes) {
+                    if mime != llm_translator_rust::data::TEXT_MIME {
+                        stdin_attachment =
+                            Some(llm_translator_rust::data::load_attachment_from_bytes(
+                                bytes,
+                                Some("auto"),
+                                None,
+                            )?);
+                    } else {
+                        input = Some(text.to_string());
+                    }
+                } else {
+                    input = Some(text.to_string());
+                }
+            } else {
+                stdin_attachment = Some(
+                    llm_translator_rust::data::load_attachment_from_bytes(
+                        bytes,
+                        Some("auto"),
+                        None,
+                    )
+                    .map_err(|err| anyhow!("stdin appears to be binary; {}", err))?,
+                );
+            }
+        }
+    }
 
     let output = llm_translator_rust::run(
         llm_translator_rust::Config {
@@ -86,12 +155,17 @@ async fn main() -> Result<()> {
             formal: cli.formal,
             source_lang: cli.source_lang,
             slang: cli.slang,
+            data: cli.data,
+            data_mime: cli.data_mime,
+            data_attachment: stdin_attachment,
             settings_path: cli.read_settings,
             show_enabled_languages: cli.show_enabled_languages,
             show_enabled_styles: cli.show_enabled_styles,
             show_models_list: cli.show_models_list,
+            show_histories: cli.show_histories,
             with_using_tokens: cli.with_using_tokens,
             with_using_model: cli.with_using_model,
+            debug_ocr: cli.debug_ocr,
         },
         input,
     )
