@@ -132,8 +132,36 @@ cat ./report.pdf | llm-translator-rust --data-mime pdf -l en
 
 `--pos` は入力語に対する辞書形式の情報を返します。
 
+使い方:
+
+```
+echo 猫 | llm-translator-rust --pos -l en
+```
+
+出力例（ラベルは source language で出力されます）:
+
+```
+訳語: cat
+読み: キャット
+品詞: 名詞
+属性: 動物, ペット
+別訳: kitty (キティ), tomcat (トムキャット), feline (フィーライン)
+
+複数形: cats
+三人称単数: cats
+過去形: -
+現在分詞: -
+
+用法: 一般的な猫を指す最も基本的な言葉。ペットや動物全般として広く使われる。
+用例:
+- I have a cat. (私は猫を飼っています。)
+- The black cat is sleeping. (黒い猫が眠っています。)
+- Many people love cats. (多くの人が猫を愛しています。)
+```
+
 - ラベルは source language の言語で出力します。
-- `読み` は翻訳語が非ラテン文字のときのみラテン文字で返します（それ以外は `-`）。
+- `読み` は翻訳語の発音を source language の文字体系で表記します
+  （例: 日本語=カタカナ、中国語=声調付きピンイン、韓国語=ハングル）。
 - `別訳` は候補の翻訳語と読みを列挙します。
 - `使用用途` と `使用例` の原文は source language で統一します。
 - 使用例は翻訳語または別訳を必ず含むように補正します。
