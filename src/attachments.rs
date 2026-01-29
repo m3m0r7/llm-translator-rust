@@ -800,6 +800,34 @@ async fn translate_audio<P: Provider + Clone>(
 }
 
 async fn transcribe_audio(wav_path: &Path, source_lang: &str) -> Result<String> {
+    let transcript = transcribe_audio_with_params(wav_path, source_lang, false).await?;
+    if !transcript.trim().is_empty() {
+        return Ok(transcript);
+    }
+
+    info!("audio: no speech detected, retrying with normalization");
+    let dir = wav_path
+        .parent()
+        .ok_or_else(|| anyhow!("invalid wav path"))?;
+    let normalized_path = dir.join("input_norm.wav");
+    run_ffmpeg(&[
+        "-y",
+        "-i",
+        wav_path.to_string_lossy().as_ref(),
+        "-af",
+        "dynaudnorm",
+        normalized_path.to_string_lossy().as_ref(),
+    ])
+    .with_context(|| "failed to normalize audio")?;
+
+    transcribe_audio_with_params(&normalized_path, source_lang, true).await
+}
+
+async fn transcribe_audio_with_params(
+    wav_path: &Path,
+    source_lang: &str,
+    relaxed: bool,
+) -> Result<String> {
     let model = whisper_model_path().await?;
     let audio = read_wav_mono_f32(wav_path)?;
 
@@ -813,6 +841,12 @@ async fn transcribe_audio(wav_path: &Path, source_lang: &str) -> Result<String> 
     let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
     params.set_n_threads(num_cpus::get() as i32);
     params.set_translate(false);
+    if relaxed {
+        params.set_suppress_blank(false);
+        params.set_suppress_non_speech_tokens(false);
+        params.set_no_speech_thold(0.0);
+        params.set_temperature(0.2);
+    }
     if !source_lang.trim().is_empty() && !source_lang.eq_ignore_ascii_case("auto") {
         if let Some(code) = map_lang_for_whisper(source_lang) {
             params.set_language(Some(code));
