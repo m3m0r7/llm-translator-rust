@@ -112,9 +112,10 @@ echo 猫 | llm-translator-rust --pos -l en
 # File translation
 cat foobar.txt | llm-translator-rust -l en
 
-# File attachment translation (image/doc/docx/pptx/xlsx/pdf/txt)
+# File attachment translation (image/doc/docx/pptx/xlsx/pdf/txt/audio)
 llm-translator-rust --data ./slides.pptx --data-mime pptx -l en
 llm-translator-rust --data ./scan.png -l ja
+llm-translator-rust --data ./voice.mp3 -l en
 
 # Attachment via stdin (auto-detect or with --data-mime)
 cat ./scan.png | llm-translator-rust -l ja
@@ -166,6 +167,45 @@ Example output (labels follow the source language):
 - `Usage` and example source sentences are in the source language.
 - Examples include the translation or one of the alternatives.
 
+## Audio translation
+
+Audio files are transcribed with `whisper-rs`, translated by the LLM, then re-synthesized.
+
+- Supported audio: mp3, wav, m4a, flac, ogg
+- Requires `ffmpeg`
+- Requires a Whisper model (auto-downloaded on first run)
+- TTS uses macOS `say` or Linux `espeak`
+
+Choose a model:
+
+```
+llm-translator-rust --show-whisper-models
+llm-translator-rust --whisper-model small -d ./voice.mp3 -l en
+```
+
+You can also set `LLM_TRANSLATOR_WHISPER_MODEL` to a model name or file path.
+`settings.toml` `[whisper] model` or `--whisper-model` overrides this.
+
+## Dependencies
+
+macOS (Homebrew):
+
+```
+brew install tesseract ffmpeg
+```
+
+Ubuntu/Debian:
+
+```
+sudo apt-get install tesseract-ocr ffmpeg espeak
+```
+
+Windows (Chocolatey):
+
+```
+choco install tesseract ffmpeg
+```
+
 ## Image translation example
 
 Original:
@@ -191,7 +231,9 @@ Translated:
 - Cache path:
   - `~/.llm-translator/.cache/meta.json` (fallback: `./.llm-translator/.cache/meta.json`)
 - `--show-models-list` prints the cached list as `provider:model` per line.
+- `--show-whisper-models` prints available whisper model names.
 - `--pos` returns dictionary-style details (translation + reading, POS, alternatives, inflections, usage/examples).
+- `--whisper-model` selects the whisper model name or path for audio transcription.
 - When `--model` is omitted, `lastUsingModel` in `meta.json` is preferred (falls back to default resolution if missing or invalid).
 - Histories are stored in `meta.json`. Dest files are written to `~/.llm-translator-rust/.cache/dest/<md5>`.
 - Image/PDF attachments use OCR (tesseract), normalize OCR text with LLMs, and re-render a numbered overlay plus a footer list.
@@ -277,16 +319,20 @@ eng = "英語"
 | `-f` | `--formal` | Formality key (from `settings.toml` `[formally]`) | `formal` |
 | `-L` | `--source-lang` | Source language (ISO 639-1/2/3 or `auto`) | `auto` |
 | `-s` | `--slang` | Include slang keywords when appropriate | `false` |
-| `-d` | `--data` | File attachment (image/doc/docx/pptx/xlsx/pdf/txt) |  |
-| `-M` | `--data-mime` | Mime type for `--data` (or stdin) (`auto`, `image/*`, `pdf`, `doc`, `docx`, `docs`, `pptx`, `xlsx`, `txt`, `png`, `jpeg`, `gif`) | `auto` |
+| `-d` | `--data` | File attachment (image/doc/docx/pptx/xlsx/pdf/txt/audio) |  |
+| `-M` | `--data-mime` | Mime type for `--data` (or stdin) (`auto`, `image/*`, `pdf`, `doc`, `docx`, `docs`, `pptx`, `xlsx`, `txt`, `mp3`, `wav`, `m4a`, `flac`, `ogg`) | `auto` |
 |  | `--show-enabled-languages` | Show enabled translation languages |  |
 |  | `--show-enabled-styles` | Show enabled style keys |  |
 |  | `--show-models-list` | Show cached model list (provider:model) |  |
+|  | `--show-whisper-models` | Show available whisper model names |  |
 |  | `--pos` | Dictionary output (part of speech/inflections) |  |
 |  | `--show-histories` | Show translation histories |  |
 |  | `--with-using-tokens` | Append token usage to output |  |
 |  | `--with-using-model` | Append model name to output |  |
 |  | `--debug-ocr` | Output OCR debug overlays/JSON for attachments |  |
+|  | `--whisper-model` | Whisper model name or path |  |
+|  | `--verbose` | Verbose logging |  |
+| `-i` | `--interactive` | Interactive mode |  |
 | `-r` | `--read-settings` | Read extra settings TOML file |  |
 | `-h` | `--help` | Show help |  |
 

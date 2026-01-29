@@ -91,3 +91,7 @@ normalize = true
 # font_size = 18
 # font_family = "Hiragino Sans"
 # font_path = "/System/Library/Fonts/Hiragino Sans W3.ttc"
+
+# [whisper] controls audio transcription model.
+# model can be a path to ggml/gguf or a model name (tiny, base, small, medium, large, large-v2, large-v3, tiny.en, base.en, small.en, medium.en).
+# model = "base"

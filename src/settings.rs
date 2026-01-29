@@ -18,6 +18,7 @@ pub struct Settings {
     pub overlay_font_family: Option<String>,
     pub overlay_font_path: Option<String>,
     pub ocr_normalize: bool,
+    pub whisper_model: Option<String>,
 }
 
 impl Default for Settings {
@@ -33,6 +34,7 @@ impl Default for Settings {
             overlay_font_family: None,
             overlay_font_path: None,
             ocr_normalize: true,
+            whisper_model: None,
         }
     }
 }
@@ -42,6 +44,7 @@ struct SettingsFile {
     formally: Option<HashMap<String, String>>,
     system: Option<SystemSettings>,
     ocr: Option<OcrSettings>,
+    whisper: Option<WhisperSettings>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -59,6 +62,11 @@ struct OcrSettings {
     font_family: Option<String>,
     font_path: Option<String>,
     normalize: Option<bool>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct WhisperSettings {
+    model: Option<String>,
 }
 
 pub fn load_settings(extra_path: Option<&Path>) -> Result<Settings> {
@@ -144,6 +152,13 @@ impl Settings {
             }
             if let Some(normalize) = ocr.normalize {
                 self.ocr_normalize = normalize;
+            }
+        }
+        if let Some(whisper) = incoming.whisper {
+            if let Some(model) = whisper.model {
+                if !model.trim().is_empty() {
+                    self.whisper_model = Some(model);
+                }
             }
         }
     }

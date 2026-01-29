@@ -26,7 +26,7 @@ printpdf = { version = "0.6", features = ["embedded_images"] }
 ttf-parser = { version = "0.25", features = ["std"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt"] }
-whisper-rs = "0.11"
+whisper-rs = { version = "0.11", features = ["whisper-cpp-tracing"] }
 hound = "3"
 num_cpus = "1"
 futures-util = "0.3"
