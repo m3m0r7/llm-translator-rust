@@ -9,7 +9,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::tempdir;
 use tracing::info;
-use whisper_rs::{get_lang_str, FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
+use whisper_rs::{
+    get_lang_str, FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters,
+};
 use zip::write::FileOptions;
 use zip::{ZipArchive, ZipWriter};
 
@@ -762,7 +764,12 @@ async fn translate_audio<P: Provider + Clone>(
     ])
     .with_context(|| "failed to decode audio with ffmpeg")?;
 
-    let transcript = transcribe_audio(&wav_path, &options.source_lang).await?;
+    let transcript = transcribe_audio(
+        &wav_path,
+        &options.source_lang,
+        translator.settings().whisper_model.as_deref(),
+    )
+    .await?;
     let transcript = transcript.trim();
     if transcript.is_empty() {
         return Err(anyhow!("no speech detected in audio"));
@@ -799,15 +806,31 @@ async fn translate_audio<P: Provider + Clone>(
     })
 }
 
-async fn transcribe_audio(wav_path: &Path, source_lang: &str) -> Result<String> {
+async fn transcribe_audio(
+    wav_path: &Path,
+    source_lang: &str,
+    whisper_model_override: Option<&str>,
+) -> Result<String> {
     let forced_lang = resolve_forced_lang(source_lang);
-    let outcome = transcribe_audio_with_params(wav_path, forced_lang.as_deref(), false).await?;
+    let outcome = transcribe_audio_with_params(
+        wav_path,
+        forced_lang.as_deref(),
+        whisper_model_override,
+        false,
+    )
+    .await?;
     if !outcome.text.trim().is_empty() {
         return Ok(outcome.text);
     }
     if forced_lang.is_none() {
         if let Some(detected) = outcome.detected_lang.as_deref() {
-            let retry = transcribe_audio_with_params(wav_path, Some(detected), true).await?;
+            let retry = transcribe_audio_with_params(
+                wav_path,
+                Some(detected),
+                whisper_model_override,
+                true,
+            )
+            .await?;
             if !retry.text.trim().is_empty() {
                 return Ok(retry.text);
             }
@@ -829,13 +852,25 @@ async fn transcribe_audio(wav_path: &Path, source_lang: &str) -> Result<String> 
     ])
     .with_context(|| "failed to normalize audio")?;
 
-    let outcome = transcribe_audio_with_params(&normalized_path, forced_lang.as_deref(), true).await?;
+    let outcome = transcribe_audio_with_params(
+        &normalized_path,
+        forced_lang.as_deref(),
+        whisper_model_override,
+        true,
+    )
+    .await?;
     if !outcome.text.trim().is_empty() {
         return Ok(outcome.text);
     }
     if forced_lang.is_none() {
         if let Some(detected) = outcome.detected_lang.as_deref() {
-            let retry = transcribe_audio_with_params(&normalized_path, Some(detected), true).await?;
+            let retry = transcribe_audio_with_params(
+                &normalized_path,
+                Some(detected),
+                whisper_model_override,
+                true,
+            )
+            .await?;
             if !retry.text.trim().is_empty() {
                 return Ok(retry.text);
             }
@@ -854,13 +889,25 @@ async fn transcribe_audio(wav_path: &Path, source_lang: &str) -> Result<String> 
     ])
     .with_context(|| "failed to normalize audio with gain")?;
 
-    let outcome = transcribe_audio_with_params(&boosted_path, forced_lang.as_deref(), true).await?;
+    let outcome = transcribe_audio_with_params(
+        &boosted_path,
+        forced_lang.as_deref(),
+        whisper_model_override,
+        true,
+    )
+    .await?;
     if !outcome.text.trim().is_empty() {
         return Ok(outcome.text);
     }
     if forced_lang.is_none() {
         if let Some(detected) = outcome.detected_lang.as_deref() {
-            let retry = transcribe_audio_with_params(&boosted_path, Some(detected), true).await?;
+            let retry = transcribe_audio_with_params(
+                &boosted_path,
+                Some(detected),
+                whisper_model_override,
+                true,
+            )
+            .await?;
             if !retry.text.trim().is_empty() {
                 return Ok(retry.text);
             }
@@ -878,9 +925,10 @@ struct TranscribeOutcome {
 async fn transcribe_audio_with_params(
     wav_path: &Path,
     forced_lang: Option<&str>,
+    whisper_model_override: Option<&str>,
     relaxed: bool,
 ) -> Result<TranscribeOutcome> {
-    let model = whisper_model_path().await?;
+    let model = whisper_model_path(whisper_model_override).await?;
     let audio = read_wav_mono_f32(wav_path)?;
 
     let model_path = model.to_string_lossy();
@@ -1040,7 +1088,19 @@ fn map_lang_for_whisper(lang: &str) -> Option<&'static str> {
 
 const WHISPER_MODEL_BASE_URL: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
 
-async fn whisper_model_path() -> Result<PathBuf> {
+async fn whisper_model_path(override_model: Option<&str>) -> Result<PathBuf> {
+    if let Some(value) = override_model {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            let path = PathBuf::from(trimmed);
+            if path.exists() {
+                return Ok(path);
+            }
+            if let Some(model) = normalize_model_name(trimmed) {
+                return ensure_whisper_model(&model).await;
+            }
+        }
+    }
     if let Ok(path) = std::env::var("LLM_TRANSLATOR_WHISPER_MODEL") {
         let path = path.trim();
         if !path.is_empty() {

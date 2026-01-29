@@ -112,9 +112,10 @@ echo 猫 | llm-translator-rust --pos -l en
 # ファイル翻訳
 cat foobar.txt | llm-translator-rust -l en
 
-# 添付ファイル翻訳（画像/doc/docx/pptx/xlsx/pdf/txt）
+# 添付ファイル翻訳（画像/doc/docx/pptx/xlsx/pdf/txt/音声）
 llm-translator-rust --data ./slides.pptx --data-mime pptx -l en
 llm-translator-rust --data ./scan.png -l ja
+llm-translator-rust --data ./voice.mp3 -l en
 
 # stdin から添付（自動判定 or --data-mime）
 cat ./scan.png | llm-translator-rust -l ja
@@ -166,6 +167,45 @@ echo 猫 | llm-translator-rust --pos -l en
 - `使用用途` と `使用例` の原文は source language で統一します。
 - 使用例は翻訳語または別訳を必ず含むように補正します。
 
+## 音声翻訳
+
+音声は `whisper-rs` で文字起こし → LLM 翻訳 → TTS で再合成します。
+
+- 対応音声: mp3, wav, m4a, flac, ogg
+- `ffmpeg` が必要
+- Whisper モデルは初回自動ダウンロード
+- TTS は macOS `say` / Linux `espeak`
+
+モデル指定:
+
+```
+llm-translator-rust --show-whisper-models
+llm-translator-rust --whisper-model small -d ./voice.mp3 -l en
+```
+
+`LLM_TRANSLATOR_WHISPER_MODEL` にモデル名またはパスを指定してもOKです。
+`settings.toml` の `[whisper] model` または `--whisper-model` が優先されます。
+
+## 依存ツール
+
+macOS (Homebrew):
+
+```
+brew install tesseract ffmpeg
+```
+
+Ubuntu/Debian:
+
+```
+sudo apt-get install tesseract-ocr ffmpeg espeak
+```
+
+Windows (Chocolatey):
+
+```
+choco install tesseract ffmpeg
+```
+
 ## 画像翻訳の例
 
 翻訳前:
@@ -191,7 +231,9 @@ echo 猫 | llm-translator-rust --pos -l en
 - キャッシュ場所:
   - `~/.llm-translator/.cache/meta.json`（`HOME` 未設定時は `./.llm-translator/.cache/meta.json`）
 - `--show-models-list` で `provider:model` 形式の一覧を表示します。
+- `--show-whisper-models` で Whisper のモデル名一覧を表示します。
 - `--pos` は辞書形式で訳語・読み・別訳・品詞・活用・使用例を返します。
+- `--whisper-model` で音声文字起こしのモデル名/パスを指定できます。
 - `--model` を省略した場合は `meta.json` の `lastUsingModel` を優先します（未設定/無効なら従来の解決方法にフォールバック）。
 - 履歴は `meta.json` に保存します。出力先は `~/.llm-translator-rust/.cache/dest/<md5>` です。
 - 画像/PDF は OCR（tesseract）で抽出した文字を LLM で正規化し、番号付き注釈とフッター一覧を再レンダリングします。
@@ -277,16 +319,20 @@ eng = "英語"
 | `-f` | `--formal` | スタイルキー（`settings.toml` の `[formally]` 参照） | `formal` |
 | `-L` | `--source-lang` | 入力言語（ISO 639-1/2/3 または `auto`） | `auto` |
 | `-s` | `--slang` | スラングのキーワードを許可 | `false` |
-| `-d` | `--data` | 添付ファイル（画像/doc/docx/pptx/xlsx/pdf/txt） |  |
-| `-M` | `--data-mime` | `--data` または stdin の MIME（`auto`, `image/*`, `pdf`, `doc`, `docx`, `docs`, `pptx`, `xlsx`, `txt`, `png`, `jpeg`, `gif`） | `auto` |
+| `-d` | `--data` | 添付ファイル（画像/doc/docx/pptx/xlsx/pdf/txt/音声） |  |
+| `-M` | `--data-mime` | `--data` または stdin の MIME（`auto`, `image/*`, `pdf`, `doc`, `docx`, `docs`, `pptx`, `xlsx`, `txt`, `mp3`, `wav`, `m4a`, `flac`, `ogg`） | `auto` |
 |  | `--show-enabled-languages` | 有効な翻訳言語を表示 |  |
 |  | `--show-enabled-styles` | 有効なスタイルキーを表示 |  |
 |  | `--show-models-list` | 取得済みモデル一覧を表示（provider:model） |  |
+|  | `--show-whisper-models` | Whisper モデル名の一覧を表示 |  |
 |  | `--pos` | 品詞・活用などの辞書形式で出力 |  |
 |  | `--show-histories` | 翻訳履歴を表示 |  |
 |  | `--with-using-tokens` | トークン使用量を付加 |  |
 |  | `--with-using-model` | 使用モデル名を付加 |  |
 |  | `--debug-ocr` | OCR デバッグ用の bbox 画像/JSON を出力 |  |
+|  | `--whisper-model` | Whisper モデル名またはパス |  |
+|  | `--verbose` | 詳細ログを出力 |  |
+| `-i` | `--interactive` | インタラクティブモード |  |
 | `-r` | `--read-settings` | 追加の設定 TOML を読み込む |  |
 | `-h` | `--help` | ヘルプ表示 |  |
 

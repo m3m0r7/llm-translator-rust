@@ -1,7 +1,9 @@
 use anyhow::Result;
 use tracing_subscriber::fmt;
+use whisper_rs::install_whisper_tracing_trampoline;
 
 pub fn init(verbose: bool) -> Result<()> {
+    install_whisper_tracing_trampoline();
     if !verbose {
         return Ok(());
     }

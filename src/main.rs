@@ -54,6 +54,10 @@ struct Cli {
     #[arg(long = "show-models-list")]
     show_models_list: bool,
 
+    /// Show available whisper model names and exit
+    #[arg(long = "show-whisper-models")]
+    show_whisper_models: bool,
+
     /// Show dictionary info (part of speech/inflections) for the input
     #[arg(long = "pos")]
     pos: bool,
@@ -85,6 +89,10 @@ struct Cli {
     /// Interactive mode
     #[arg(short = 'i', long = "interactive")]
     interactive: bool,
+
+    /// Whisper model name or path (audio transcription)
+    #[arg(long = "whisper-model")]
+    whisper_model: Option<String>,
 }
 
 #[tokio::main]
@@ -98,6 +106,7 @@ async fn main() -> Result<()> {
     let needs_input = !(cli.show_enabled_languages
         || cli.show_enabled_styles
         || cli.show_models_list
+        || cli.show_whisper_models
         || cli.show_histories);
     let stdin_bytes = if needs_input {
         if cli.data.is_some() && io::stdin().is_terminal() {
@@ -173,12 +182,14 @@ async fn main() -> Result<()> {
             show_enabled_languages: cli.show_enabled_languages,
             show_enabled_styles: cli.show_enabled_styles,
             show_models_list: cli.show_models_list,
+            show_whisper_models: cli.show_whisper_models,
             pos: cli.pos,
             show_histories: cli.show_histories,
             with_using_tokens: cli.with_using_tokens,
             with_using_model: cli.with_using_model,
             debug_ocr: cli.debug_ocr,
             verbose: cli.verbose,
+            whisper_model: cli.whisper_model,
         },
         input,
     )
@@ -209,12 +220,14 @@ impl InteractiveState {
                 show_enabled_languages: false,
                 show_enabled_styles: false,
                 show_models_list: false,
+                show_whisper_models: false,
                 pos: cli.pos,
                 show_histories: false,
                 with_using_tokens: cli.with_using_tokens,
                 with_using_model: cli.with_using_model,
                 debug_ocr: cli.debug_ocr,
                 verbose: cli.verbose,
+                whisper_model: cli.whisper_model.clone(),
             },
         }
     }
@@ -224,6 +237,7 @@ impl InteractiveState {
         config.show_enabled_languages = false;
         config.show_enabled_styles = false;
         config.show_models_list = false;
+        config.show_whisper_models = false;
         config.show_histories = false;
         config
     }
@@ -280,6 +294,13 @@ async fn handle_interactive_command(input: &str, state: &mut InteractiveState) -
         println!("{}", output);
         return Ok(false);
     }
+    if trimmed == "/show-whisper-models" {
+        let mut config = state.config_for_run();
+        config.show_whisper_models = true;
+        let output = llm_translator_rust::run(config, None).await?;
+        println!("{}", output);
+        return Ok(false);
+    }
     if trimmed == "/show-histories" {
         let mut config = state.config_for_run();
         config.show_histories = true;
@@ -317,6 +338,19 @@ async fn handle_interactive_command(input: &str, state: &mut InteractiveState) -
         } else {
             state.config.model = Some(value.to_string());
             println!("model set to {}", value);
+        }
+        return Ok(false);
+    }
+    if let Some(arg) = trimmed.strip_prefix("/whisper-model") {
+        let value = arg.trim();
+        if value.is_empty() {
+            println!(
+                "whisper-model: {}",
+                state.config.whisper_model.as_deref().unwrap_or("(auto)")
+            );
+        } else {
+            state.config.whisper_model = Some(value.to_string());
+            println!("whisper-model set to {}", value);
         }
         return Ok(false);
     }
@@ -438,11 +472,13 @@ fn print_interactive_help() {
     println!("Commands:");
     println!("  /quit, /exit                 Exit interactive mode");
     println!("  /show-models-list            Show cached models");
+    println!("  /show-whisper-models          Show whisper model names");
     println!("  /show-histories              Show translation histories");
     println!("  /show-enabled-languages      Show enabled languages");
     println!("  /show-enabled-styles         Show enabled styles");
     println!("  /run                         Run translation with empty input");
     println!("  /model <provider:model>      Set model (or show current)");
+    println!("  /whisper-model <name|path>   Set whisper model (or show current)");
     println!("  /lang <code>                 Set target language");
     println!("  /source-lang <code>          Set source language");
     println!("  /formal <key>                Set formality key");

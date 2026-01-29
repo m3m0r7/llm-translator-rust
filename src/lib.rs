@@ -35,18 +35,25 @@ pub struct Config {
     pub show_enabled_languages: bool,
     pub show_enabled_styles: bool,
     pub show_models_list: bool,
+    pub show_whisper_models: bool,
     pub pos: bool,
     pub show_histories: bool,
     pub with_using_tokens: bool,
     pub with_using_model: bool,
     pub debug_ocr: bool,
     pub verbose: bool,
+    pub whisper_model: Option<String>,
 }
 
 pub async fn run(config: Config, input: Option<String>) -> Result<String> {
     let mut config = config;
     let settings_path = config.settings_path.as_deref().map(Path::new);
-    let settings = settings::load_settings(settings_path)?;
+    let mut settings = settings::load_settings(settings_path)?;
+    if let Some(model) = config.whisper_model.as_deref() {
+        if !model.trim().is_empty() {
+            settings.whisper_model = Some(model.to_string());
+        }
+    }
     let registry = languages::LanguageRegistry::load()?;
     let packs = languages::load_language_packs(&settings.system_languages)?;
     let ocr_languages = resolve_ocr_languages(&settings, &config.source_lang, &config.lang)?;
@@ -60,6 +67,9 @@ pub async fn run(config: Config, input: Option<String>) -> Result<String> {
     }
     if config.show_models_list {
         return show_models_list(&config).await;
+    }
+    if config.show_whisper_models {
+        return Ok(show_whisper_models());
     }
     if config.show_histories {
         return show_histories();
@@ -281,6 +291,29 @@ fn show_histories() -> Result<String> {
         lines.push(format!("  dest: {}", summarize_history_value(&entry.dest)));
     }
     Ok(lines.join("\n"))
+}
+
+fn show_whisper_models() -> String {
+    let models = [
+        "tiny",
+        "base",
+        "small",
+        "medium",
+        "large",
+        "large-v2",
+        "large-v3",
+        "tiny.en",
+        "base.en",
+        "small.en",
+        "medium.en",
+    ];
+    let mut lines = Vec::new();
+    lines.push("whisper models (ggml/gguf):".to_string());
+    for model in models {
+        lines.push(format!("- {}", model));
+    }
+    lines.push("note: *.en models are English-only".to_string());
+    lines.join("\n")
 }
 
 fn summarize_history_value(value: &str) -> String {
