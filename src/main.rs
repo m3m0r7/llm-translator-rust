@@ -1,4 +1,4 @@
-use std::io::{self, IsTerminal, Read};
+use std::io::{self, BufRead, IsTerminal, Read};
 
 use anyhow::{anyhow, Result};
 use clap::Parser;
@@ -34,11 +34,11 @@ struct Cli {
     #[arg(short = 's', long = "slang")]
     slang: bool,
 
-    /// File to translate (image/doc/docx/pptx/xlsx/pdf/txt)
+    /// File to translate (image/doc/docx/pptx/xlsx/pdf/txt/audio)
     #[arg(short = 'd', long = "data")]
     data: Option<String>,
 
-    /// Mime type for --data (auto, image/*, pdf, doc, docx, docs, pptx, xlsx, txt)
+    /// Mime type for --data (auto, image/*, pdf, doc, docx, docs, pptx, xlsx, txt, mp3, wav, m4a, flac, ogg)
     #[arg(short = 'M', long = "data-mime")]
     data_mime: Option<String>,
 
@@ -77,11 +77,23 @@ struct Cli {
     /// Output OCR debug overlays for attachments
     #[arg(long = "debug-ocr")]
     debug_ocr: bool,
+
+    /// Enable verbose logging
+    #[arg(long = "verbose")]
+    verbose: bool,
+
+    /// Interactive mode
+    #[arg(short = 'i', long = "interactive")]
+    interactive: bool,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
+    llm_translator_rust::logging::init(cli.verbose)?;
+    if cli.interactive {
+        return run_interactive(cli).await;
+    }
 
     let needs_input = !(cli.show_enabled_languages
         || cli.show_enabled_styles
@@ -166,6 +178,7 @@ async fn main() -> Result<()> {
             with_using_tokens: cli.with_using_tokens,
             with_using_model: cli.with_using_model,
             debug_ocr: cli.debug_ocr,
+            verbose: cli.verbose,
         },
         input,
     )
@@ -173,4 +186,271 @@ async fn main() -> Result<()> {
 
     println!("{}", output);
     Ok(())
+}
+
+struct InteractiveState {
+    config: llm_translator_rust::Config,
+}
+
+impl InteractiveState {
+    fn new(cli: &Cli) -> Self {
+        Self {
+            config: llm_translator_rust::Config {
+                lang: cli.lang.clone(),
+                model: cli.model.clone(),
+                key: cli.key.clone(),
+                formal: cli.formal.clone(),
+                source_lang: cli.source_lang.clone(),
+                slang: cli.slang,
+                data: cli.data.clone(),
+                data_mime: cli.data_mime.clone(),
+                data_attachment: None,
+                settings_path: cli.read_settings.clone(),
+                show_enabled_languages: false,
+                show_enabled_styles: false,
+                show_models_list: false,
+                pos: cli.pos,
+                show_histories: false,
+                with_using_tokens: cli.with_using_tokens,
+                with_using_model: cli.with_using_model,
+                debug_ocr: cli.debug_ocr,
+                verbose: cli.verbose,
+            },
+        }
+    }
+
+    fn config_for_run(&self) -> llm_translator_rust::Config {
+        let mut config = self.config.clone();
+        config.show_enabled_languages = false;
+        config.show_enabled_styles = false;
+        config.show_models_list = false;
+        config.show_histories = false;
+        config
+    }
+}
+
+async fn run_interactive(cli: Cli) -> Result<()> {
+    use std::io::Write;
+
+    let mut state = InteractiveState::new(&cli);
+    println!("Interactive mode. Use /quit or /exit to finish.");
+    println!("Type /help to see available commands.");
+
+    let mut line = String::new();
+    let stdin = io::stdin();
+    let mut stdin_lock = stdin.lock();
+    loop {
+        line.clear();
+        print!("> ");
+        io::stdout().flush()?;
+        if stdin_lock.read_line(&mut line)? == 0 {
+            break;
+        }
+        let input = line.trim();
+        if input.is_empty() {
+            continue;
+        }
+        if input.starts_with('/') {
+            if handle_interactive_command(input, &mut state).await? {
+                break;
+            }
+            continue;
+        }
+
+        let output =
+            llm_translator_rust::run(state.config_for_run(), Some(input.to_string())).await?;
+        println!("{}", output);
+    }
+    Ok(())
+}
+
+async fn handle_interactive_command(input: &str, state: &mut InteractiveState) -> Result<bool> {
+    let trimmed = input.trim();
+    if matches!(trimmed, "/quit" | "/exit") {
+        return Ok(true);
+    }
+    if trimmed == "/help" {
+        print_interactive_help();
+        return Ok(false);
+    }
+    if trimmed == "/show-models-list" {
+        let mut config = state.config_for_run();
+        config.show_models_list = true;
+        let output = llm_translator_rust::run(config, None).await?;
+        println!("{}", output);
+        return Ok(false);
+    }
+    if trimmed == "/show-histories" {
+        let mut config = state.config_for_run();
+        config.show_histories = true;
+        let output = llm_translator_rust::run(config, None).await?;
+        println!("{}", output);
+        return Ok(false);
+    }
+    if trimmed == "/show-enabled-languages" {
+        let mut config = state.config_for_run();
+        config.show_enabled_languages = true;
+        let output = llm_translator_rust::run(config, None).await?;
+        println!("{}", output);
+        return Ok(false);
+    }
+    if trimmed == "/show-enabled-styles" {
+        let mut config = state.config_for_run();
+        config.show_enabled_styles = true;
+        let output = llm_translator_rust::run(config, None).await?;
+        println!("{}", output);
+        return Ok(false);
+    }
+    if trimmed == "/run" {
+        let output = llm_translator_rust::run(state.config_for_run(), Some(String::new())).await?;
+        println!("{}", output);
+        return Ok(false);
+    }
+
+    if let Some(arg) = trimmed.strip_prefix("/model") {
+        let value = arg.trim();
+        if value.is_empty() {
+            println!(
+                "model: {}",
+                state.config.model.as_deref().unwrap_or("(auto)")
+            );
+        } else {
+            state.config.model = Some(value.to_string());
+            println!("model set to {}", value);
+        }
+        return Ok(false);
+    }
+    if let Some(arg) = trimmed.strip_prefix("/lang") {
+        let value = arg.trim();
+        if value.is_empty() {
+            println!("lang: {}", state.config.lang);
+        } else {
+            state.config.lang = value.to_string();
+            println!("lang set to {}", value);
+        }
+        return Ok(false);
+    }
+    if let Some(arg) = trimmed.strip_prefix("/source-lang") {
+        let value = arg.trim();
+        if value.is_empty() {
+            println!("source-lang: {}", state.config.source_lang);
+        } else {
+            state.config.source_lang = value.to_string();
+            println!("source-lang set to {}", value);
+        }
+        return Ok(false);
+    }
+    if let Some(arg) = trimmed.strip_prefix("/formal") {
+        let value = arg.trim();
+        if value.is_empty() {
+            println!("formal: {}", state.config.formal);
+        } else {
+            state.config.formal = value.to_string();
+            println!("formal set to {}", value);
+        }
+        return Ok(false);
+    }
+    if let Some(arg) = trimmed.strip_prefix("/slang") {
+        state.config.slang = parse_toggle(arg, state.config.slang)?;
+        println!("slang: {}", state.config.slang);
+        return Ok(false);
+    }
+    if let Some(arg) = trimmed.strip_prefix("/pos") {
+        state.config.pos = parse_toggle(arg, state.config.pos)?;
+        println!("pos: {}", state.config.pos);
+        return Ok(false);
+    }
+    if let Some(arg) = trimmed.strip_prefix("/with-using-model") {
+        state.config.with_using_model = parse_toggle(arg, state.config.with_using_model)?;
+        println!("with-using-model: {}", state.config.with_using_model);
+        return Ok(false);
+    }
+    if let Some(arg) = trimmed.strip_prefix("/with-using-tokens") {
+        state.config.with_using_tokens = parse_toggle(arg, state.config.with_using_tokens)?;
+        println!("with-using-tokens: {}", state.config.with_using_tokens);
+        return Ok(false);
+    }
+    if let Some(arg) = trimmed.strip_prefix("/data") {
+        let value = arg.trim();
+        if value.is_empty() {
+            println!("data: {}", state.config.data.as_deref().unwrap_or("(none)"));
+        } else if value == "clear" {
+            state.config.data = None;
+            println!("data cleared");
+        } else {
+            state.config.data = Some(value.to_string());
+            println!("data set to {}", value);
+        }
+        return Ok(false);
+    }
+    if let Some(arg) = trimmed.strip_prefix("/data-mime") {
+        let value = arg.trim();
+        if value.is_empty() {
+            println!(
+                "data-mime: {}",
+                state.config.data_mime.as_deref().unwrap_or("(auto)")
+            );
+        } else if value == "clear" {
+            state.config.data_mime = None;
+            println!("data-mime cleared");
+        } else {
+            state.config.data_mime = Some(value.to_string());
+            println!("data-mime set to {}", value);
+        }
+        return Ok(false);
+    }
+    if let Some(arg) = trimmed.strip_prefix("/key") {
+        let value = arg.trim();
+        if value.is_empty() {
+            println!(
+                "key: {}",
+                state
+                    .config
+                    .key
+                    .as_deref()
+                    .map(|_| "(set)")
+                    .unwrap_or("(none)")
+            );
+        } else {
+            state.config.key = Some(value.to_string());
+            println!("key set");
+        }
+        return Ok(false);
+    }
+
+    eprintln!("unknown command: {}", trimmed);
+    Ok(false)
+}
+
+fn parse_toggle(arg: &str, current: bool) -> Result<bool> {
+    let value = arg.trim();
+    if value.is_empty() {
+        return Ok(!current);
+    }
+    match value.to_lowercase().as_str() {
+        "on" | "true" | "1" => Ok(true),
+        "off" | "false" | "0" => Ok(false),
+        _ => Err(anyhow!("expected on/off/true/false/1/0")),
+    }
+}
+
+fn print_interactive_help() {
+    println!("Commands:");
+    println!("  /quit, /exit                 Exit interactive mode");
+    println!("  /show-models-list            Show cached models");
+    println!("  /show-histories              Show translation histories");
+    println!("  /show-enabled-languages      Show enabled languages");
+    println!("  /show-enabled-styles         Show enabled styles");
+    println!("  /run                         Run translation with empty input");
+    println!("  /model <provider:model>      Set model (or show current)");
+    println!("  /lang <code>                 Set target language");
+    println!("  /source-lang <code>          Set source language");
+    println!("  /formal <key>                Set formality key");
+    println!("  /slang [on|off]              Toggle slang");
+    println!("  /pos [on|off]                Toggle dictionary mode");
+    println!("  /with-using-model [on|off]   Toggle model suffix output");
+    println!("  /with-using-tokens [on|off]  Toggle token usage output");
+    println!("  /data <path|clear>           Set attachment file");
+    println!("  /data-mime <mime|clear>      Set attachment mime");
+    println!("  /key <api-key>               Set API key");
 }

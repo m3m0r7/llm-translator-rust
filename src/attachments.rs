@@ -8,6 +8,7 @@ use std::io::{Cursor, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::tempdir;
+use tracing::info;
 use zip::write::FileOptions;
 use zip::{ZipArchive, ZipWriter};
 
@@ -36,6 +37,7 @@ pub async fn translate_attachment<P: Provider + Clone>(
 ) -> Result<Option<AttachmentTranslation>> {
     match data.mime.as_str() {
         mime if mime.starts_with("image/") => {
+            info!("attachment: image (mime={})", mime);
             let mut cache = TranslationCache::new();
             let input_mime = data::sniff_mime(&data.bytes).unwrap_or_else(|| data.mime.clone());
             let debug = if debug_ocr {
@@ -60,21 +62,25 @@ pub async fn translate_attachment<P: Provider + Clone>(
             return Ok(Some(cache.finish(data.mime.clone(), output)));
         }
         data::DOCX_MIME => {
+            info!("attachment: docx");
             let output =
                 translate_office_zip(&data.bytes, OfficeKind::Docx, translator, options).await?;
             return Ok(Some(output));
         }
         data::PPTX_MIME => {
+            info!("attachment: pptx");
             let output =
                 translate_office_zip(&data.bytes, OfficeKind::Pptx, translator, options).await?;
             return Ok(Some(output));
         }
         data::XLSX_MIME => {
+            info!("attachment: xlsx");
             let output =
                 translate_office_zip(&data.bytes, OfficeKind::Xlsx, translator, options).await?;
             return Ok(Some(output));
         }
         data::PDF_MIME => {
+            info!("attachment: pdf");
             let debug = if debug_ocr {
                 Some(build_ocr_debug_config(debug_src, data.name.as_deref())?)
             } else {
@@ -84,7 +90,13 @@ pub async fn translate_attachment<P: Provider + Clone>(
                 translate_pdf(&data.bytes, ocr_languages, translator, options, debug).await?;
             return Ok(Some(output));
         }
+        mime if mime.starts_with("audio/") => {
+            info!("attachment: audio ({})", mime);
+            let output = translate_audio(data, translator, options).await?;
+            return Ok(Some(output));
+        }
         data::TEXT_MIME => {
+            info!("attachment: text");
             let text = std::str::from_utf8(&data.bytes)
                 .with_context(|| "failed to decode text file as UTF-8")?;
             let exec = translator.exec(text, options.clone()).await?;
@@ -721,6 +733,234 @@ fn images_to_pdf(pages: &[Vec<u8>]) -> Result<Vec<u8>> {
 fn px_to_mm(px: u32) -> f32 {
     let inches = px as f32 / 72.0;
     inches * 25.4
+}
+
+async fn translate_audio<P: Provider + Clone>(
+    data: &data::DataAttachment,
+    translator: &Translator<P>,
+    options: &TranslateOptions,
+) -> Result<AttachmentTranslation> {
+    ensure_command("ffmpeg", "audio translation requires ffmpeg")?;
+    info!("audio: decoding with ffmpeg");
+
+    let dir = tempdir().with_context(|| "failed to create temp dir for audio")?;
+    let input_ext = data::extension_from_mime(&data.mime).unwrap_or("bin");
+    let input_path = dir.path().join(format!("input.{}", input_ext));
+    fs::write(&input_path, &data.bytes).with_context(|| "failed to write audio input")?;
+
+    let wav_path = dir.path().join("input.wav");
+    run_ffmpeg(&[
+        "-y",
+        "-i",
+        input_path.to_string_lossy().as_ref(),
+        "-ar",
+        "16000",
+        "-ac",
+        "1",
+        wav_path.to_string_lossy().as_ref(),
+    ])
+    .with_context(|| "failed to decode audio with ffmpeg")?;
+
+    let transcript = transcribe_audio(&wav_path, &options.source_lang)?;
+    let transcript = transcript.trim();
+    if transcript.is_empty() {
+        return Err(anyhow!("no speech detected in audio"));
+    }
+
+    info!("audio: transcribed {} chars", transcript.chars().count());
+    let exec = translator.exec(transcript, options.clone()).await?;
+    let translated = exec.text.trim();
+    if translated.is_empty() {
+        return Err(anyhow!("translation returned empty text"));
+    }
+
+    let tts_wav = dir.path().join("tts.wav");
+    info!("audio: synthesizing speech");
+    synthesize_speech(translated, &options.lang, &tts_wav)?;
+
+    let out_ext = data::extension_from_mime(&data.mime).unwrap_or("mp3");
+    let output_path = dir.path().join(format!("output.{}", out_ext));
+    run_ffmpeg(&[
+        "-y",
+        "-i",
+        tts_wav.to_string_lossy().as_ref(),
+        output_path.to_string_lossy().as_ref(),
+    ])
+    .with_context(|| "failed to encode translated audio")?;
+
+    let bytes = fs::read(&output_path).with_context(|| "failed to read translated audio")?;
+
+    Ok(AttachmentTranslation {
+        bytes,
+        mime: data.mime.clone(),
+        model: exec.model,
+        usage: exec.usage,
+    })
+}
+
+fn transcribe_audio(wav_path: &Path, source_lang: &str) -> Result<String> {
+    if !command_exists("whisper") {
+        return Err(anyhow!(
+            "audio transcription requires whisper (pip install openai-whisper)"
+        ));
+    }
+
+    let dir = wav_path
+        .parent()
+        .ok_or_else(|| anyhow!("invalid wav path"))?;
+    let mut command = Command::new("whisper");
+    command
+        .arg(wav_path)
+        .arg("--model")
+        .arg("base")
+        .arg("--output_format")
+        .arg("txt")
+        .arg("--output_dir")
+        .arg(dir)
+        .arg("--task")
+        .arg("transcribe")
+        .arg("--fp16")
+        .arg("False");
+
+    if !source_lang.trim().is_empty() && !source_lang.eq_ignore_ascii_case("auto") {
+        if let Some(code) = map_lang_for_whisper(source_lang) {
+            command.arg("--language").arg(code);
+        }
+    }
+
+    let output = command.output().with_context(|| "failed to run whisper")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!("whisper failed: {}", stderr.trim()));
+    }
+
+    let txt_path = wav_path.with_extension("txt");
+    let text = fs::read_to_string(&txt_path).with_context(|| "failed to read transcript")?;
+    Ok(text)
+}
+
+fn synthesize_speech(text: &str, target_lang: &str, out_wav: &Path) -> Result<()> {
+    let text = text.replace('\n', " ");
+    if command_exists("say") {
+        let aiff_path = out_wav.with_extension("aiff");
+        let status = Command::new("say")
+            .arg("-o")
+            .arg(&aiff_path)
+            .arg(&text)
+            .status()
+            .with_context(|| "failed to run say")?;
+        if !status.success() {
+            return Err(anyhow!("say failed to synthesize audio"));
+        }
+        run_ffmpeg(&[
+            "-y",
+            "-i",
+            aiff_path.to_string_lossy().as_ref(),
+            out_wav.to_string_lossy().as_ref(),
+        ])
+        .with_context(|| "failed to convert say output")?;
+        return Ok(());
+    }
+
+    if command_exists("espeak") {
+        let voice = map_lang_for_espeak(target_lang).unwrap_or("en");
+        let status = Command::new("espeak")
+            .arg("-v")
+            .arg(voice)
+            .arg("-w")
+            .arg(out_wav)
+            .arg(&text)
+            .status()
+            .with_context(|| "failed to run espeak")?;
+        if !status.success() {
+            return Err(anyhow!("espeak failed to synthesize audio"));
+        }
+        return Ok(());
+    }
+
+    Err(anyhow!(
+        "no TTS engine found (install macOS 'say' or Linux 'espeak')"
+    ))
+}
+
+fn ensure_command(cmd: &str, message: &str) -> Result<()> {
+    if command_exists(cmd) {
+        Ok(())
+    } else {
+        Err(anyhow!("{}", message))
+    }
+}
+
+fn run_ffmpeg(args: &[&str]) -> Result<()> {
+    let output = Command::new("ffmpeg")
+        .args(args)
+        .output()
+        .with_context(|| "failed to run ffmpeg")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!("ffmpeg failed: {}", stderr.trim()));
+    }
+    Ok(())
+}
+
+fn map_lang_for_whisper(lang: &str) -> Option<&'static str> {
+    match lang.trim().to_lowercase().as_str() {
+        "ja" | "jpn" => Some("ja"),
+        "en" | "eng" => Some("en"),
+        "zh" | "zho" | "zho-hans" | "zho-hant" => Some("zh"),
+        "ko" | "kor" => Some("ko"),
+        "fr" | "fra" => Some("fr"),
+        "es" | "spa" => Some("es"),
+        "de" | "deu" => Some("de"),
+        "it" | "ita" => Some("it"),
+        "pt" | "por" => Some("pt"),
+        "ru" | "rus" => Some("ru"),
+        "nl" | "nld" => Some("nl"),
+        "sv" | "swe" => Some("sv"),
+        "no" | "nor" => Some("no"),
+        "da" | "dan" => Some("da"),
+        "fi" | "fin" => Some("fi"),
+        "pl" | "pol" => Some("pl"),
+        "cs" | "ces" => Some("cs"),
+        "el" | "ell" => Some("el"),
+        "tr" | "tur" => Some("tr"),
+        "ar" | "ara" => Some("ar"),
+        "hi" | "hin" => Some("hi"),
+        "id" | "ind" => Some("id"),
+        "vi" | "vie" => Some("vi"),
+        "th" | "tha" => Some("th"),
+        _ => None,
+    }
+}
+
+fn map_lang_for_espeak(lang: &str) -> Option<&'static str> {
+    match lang.trim().to_lowercase().as_str() {
+        "ja" | "jpn" => Some("ja"),
+        "en" | "eng" => Some("en"),
+        "zh" | "zho" | "zho-hans" | "zho-hant" => Some("zh"),
+        "ko" | "kor" => Some("ko"),
+        "fr" | "fra" => Some("fr"),
+        "es" | "spa" => Some("es"),
+        "de" | "deu" => Some("de"),
+        "it" | "ita" => Some("it"),
+        "pt" | "por" => Some("pt"),
+        "ru" | "rus" => Some("ru"),
+        "nl" | "nld" => Some("nl"),
+        "sv" | "swe" => Some("sv"),
+        "no" | "nor" => Some("no"),
+        "da" | "dan" => Some("da"),
+        "fi" | "fin" => Some("fi"),
+        "pl" | "pol" => Some("pl"),
+        "cs" | "ces" => Some("cs"),
+        "el" | "ell" => Some("el"),
+        "tr" | "tur" => Some("tr"),
+        "ar" | "ara" => Some("ar"),
+        "hi" | "hin" => Some("hi"),
+        "id" | "ind" => Some("id"),
+        "vi" | "vie" => Some("vi"),
+        "th" | "tha" => Some("th"),
+        _ => None,
+    }
 }
 
 struct TranslationCache {

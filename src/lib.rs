@@ -2,11 +2,13 @@ use anyhow::{anyhow, Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tracing::{info, warn};
 
 pub mod attachments;
 pub mod data;
 pub mod dictionary;
 pub mod languages;
+pub mod logging;
 mod model_registry;
 pub mod ocr;
 mod providers;
@@ -38,6 +40,7 @@ pub struct Config {
     pub with_using_tokens: bool,
     pub with_using_model: bool,
     pub debug_ocr: bool,
+    pub verbose: bool,
 }
 
 pub async fn run(config: Config, input: Option<String>) -> Result<String> {
@@ -47,6 +50,10 @@ pub async fn run(config: Config, input: Option<String>) -> Result<String> {
     let registry = languages::LanguageRegistry::load()?;
     let packs = languages::load_language_packs(&settings.system_languages)?;
     let ocr_languages = resolve_ocr_languages(&settings, &config.source_lang, &config.lang)?;
+    info!(
+        "settings loaded (history_limit={}, ocr_languages={})",
+        settings.history_limit, ocr_languages
+    );
 
     if config.show_enabled_languages || config.show_enabled_styles {
         return Ok(format_show_output(&config, &settings, &registry, &packs));
@@ -65,6 +72,7 @@ pub async fn run(config: Config, input: Option<String>) -> Result<String> {
     let data_attachment = if let Some(attachment) = config.data_attachment.take() {
         Some(attachment)
     } else if let Some(path) = config.data.as_deref() {
+        info!("loading attachment: {}", path);
         Some(data::load_attachment(
             Path::new(path),
             config.data_mime.as_deref(),
@@ -90,6 +98,7 @@ pub async fn run(config: Config, input: Option<String>) -> Result<String> {
     let history_limit = settings.history_limit;
 
     let selection = if let Some(model_arg) = config.model.as_deref() {
+        info!("model requested: {}", model_arg);
         providers::resolve_provider_selection(Some(model_arg), config.key.as_deref())?
     } else {
         match model_registry::get_last_using_model()? {
@@ -109,6 +118,11 @@ pub async fn run(config: Config, input: Option<String>) -> Result<String> {
     .await
     .with_context(|| "failed to resolve model")?;
     let history_model = model.clone();
+    info!(
+        "provider selected: {} (model={})",
+        selection.provider.as_str(),
+        history_model
+    );
 
     validate_lang_codes(&config, &registry)?;
 
@@ -139,6 +153,7 @@ pub async fn run(config: Config, input: Option<String>) -> Result<String> {
         if data_attachment.is_some() {
             return Err(anyhow!("--pos only supports text input"));
         }
+        info!("running dictionary mode");
         let execution = dictionary::exec_pos(&translator, input, &options).await?;
         return Ok(format_execution_output(
             &execution,
@@ -148,6 +163,7 @@ pub async fn run(config: Config, input: Option<String>) -> Result<String> {
     }
 
     if let Some(data) = data_attachment.as_ref() {
+        info!("translating attachment: {}", data.mime);
         if let Some(output) = attachments::translate_attachment(
             data,
             &ocr_languages,
@@ -176,6 +192,9 @@ pub async fn run(config: Config, input: Option<String>) -> Result<String> {
             let output_text = if output.mime.starts_with("image/") {
                 let size_kb = output.bytes.len().div_ceil(1024);
                 format!("Created image {} ({}KB) !", output_path.display(), size_kb)
+            } else if output.mime.starts_with("audio/") {
+                let size_kb = output.bytes.len().div_ceil(1024);
+                format!("Created audio {} ({}KB) !", output_path.display(), size_kb)
             } else {
                 output_path.to_string_lossy().to_string()
             };
@@ -189,7 +208,7 @@ pub async fn run(config: Config, input: Option<String>) -> Result<String> {
                 dest: dest_path.clone(),
             };
             if let Err(err) = model_registry::record_history(entry, history_limit) {
-                eprintln!("warning: failed to record history: {}", err);
+                warn!("failed to record history: {}", err);
             }
 
             let execution = ExecutionOutput {
