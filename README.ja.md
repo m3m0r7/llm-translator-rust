@@ -106,6 +106,9 @@ echo ねこ | llm-translator-rust -l en --formal academic
 echo 最高だね | llm-translator-rust -l en --slang
 # Awesome
 
+# 辞書（品詞・活用）
+echo 猫 | llm-translator-rust --pos -l en
+
 # ファイル翻訳
 cat foobar.txt | llm-translator-rust -l en
 
@@ -124,6 +127,16 @@ cat ./report.pdf | llm-translator-rust --data-mime pdf -l en
 # - 同じ翻訳語は同じ番号になります
 # --data でファイルを指定した場合は、同じ場所に *_translated.<ext> も出力します。
 ```
+
+## 辞書機能（--pos）
+
+`--pos` は入力語に対する辞書形式の情報を返します。
+
+- ラベルは source language の言語で出力します。
+- `読み` は翻訳語が非ラテン文字のときのみラテン文字で返します（それ以外は `-`）。
+- `別訳` は候補の翻訳語と読みを列挙します。
+- `使用用途` と `使用例` の原文は source language で統一します。
+- 使用例は翻訳語または別訳を必ず含むように補正します。
 
 ## 画像翻訳の例
 
@@ -150,6 +163,7 @@ cat ./report.pdf | llm-translator-rust --data-mime pdf -l en
 - キャッシュ場所:
   - `~/.llm-translator/.cache/meta.json`（`HOME` 未設定時は `./.llm-translator/.cache/meta.json`）
 - `--show-models-list` で `provider:model` 形式の一覧を表示します。
+- `--pos` は辞書形式で訳語・読み・別訳・品詞・活用・使用例を返します。
 - `--model` を省略した場合は `meta.json` の `lastUsingModel` を優先します（未設定/無効なら従来の解決方法にフォールバック）。
 - 履歴は `meta.json` に保存します。出力先は `~/.llm-translator-rust/.cache/dest/<md5>` です。
 - 画像/PDF は OCR（tesseract）で抽出した文字を LLM で正規化し、番号付き注釈とフッター一覧を再レンダリングします。
@@ -240,6 +254,7 @@ eng = "英語"
 |  | `--show-enabled-languages` | 有効な翻訳言語を表示 |  |
 |  | `--show-enabled-styles` | 有効なスタイルキーを表示 |  |
 |  | `--show-models-list` | 取得済みモデル一覧を表示（provider:model） |  |
+|  | `--pos` | 品詞・活用などの辞書形式で出力 |  |
 |  | `--show-histories` | 翻訳履歴を表示 |  |
 |  | `--with-using-tokens` | トークン使用量を付加 |  |
 |  | `--with-using-model` | 使用モデル名を付加 |  |

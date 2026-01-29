@@ -106,6 +106,9 @@ echo Cat | llm-translator-rust -l ja --formal academic
 echo Awesome | llm-translator-rust -l ja --slang
 # ヤバい
 
+# Dictionary (part of speech/inflections)
+echo 猫 | llm-translator-rust --pos -l en
+
 # File translation
 cat foobar.txt | llm-translator-rust -l en
 
@@ -124,6 +127,16 @@ cat ./report.pdf | llm-translator-rust --data-mime pdf -l en
 # - identical translations share the same number.
 # When using --data with a file path, a sibling file named *_translated.<ext> is also written.
 ```
+
+## Dictionary (--pos)
+
+`--pos` returns dictionary-style details for the input term.
+
+- Labels are localized to the source language.
+- `Reading` is Latin script when the translation is non-Latin (otherwise `-`).
+- `Alternatives` lists other plausible translations with readings.
+- `Usage` and example source sentences are in the source language.
+- Examples include the translation or one of the alternatives.
 
 ## Image translation example
 
@@ -150,6 +163,7 @@ Translated:
 - Cache path:
   - `~/.llm-translator/.cache/meta.json` (fallback: `./.llm-translator/.cache/meta.json`)
 - `--show-models-list` prints the cached list as `provider:model` per line.
+- `--pos` returns dictionary-style details (translation + reading, POS, alternatives, inflections, usage/examples).
 - When `--model` is omitted, `lastUsingModel` in `meta.json` is preferred (falls back to default resolution if missing or invalid).
 - Histories are stored in `meta.json`. Dest files are written to `~/.llm-translator-rust/.cache/dest/<md5>`.
 - Image/PDF attachments use OCR (tesseract), normalize OCR text with LLMs, and re-render a numbered overlay plus a footer list.
@@ -240,6 +254,7 @@ eng = "英語"
 |  | `--show-enabled-languages` | Show enabled translation languages |  |
 |  | `--show-enabled-styles` | Show enabled style keys |  |
 |  | `--show-models-list` | Show cached model list (provider:model) |  |
+|  | `--pos` | Dictionary output (part of speech/inflections) |  |
 |  | `--show-histories` | Show translation histories |  |
 |  | `--with-using-tokens` | Append token usage to output |  |
 |  | `--with-using-model` | Append model name to output |  |

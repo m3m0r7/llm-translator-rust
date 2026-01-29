@@ -39,6 +39,10 @@ impl<P: Provider + Clone> Translator<P> {
         &self.settings
     }
 
+    pub fn registry(&self) -> &LanguageRegistry {
+        &self.registry
+    }
+
     pub async fn call_tool_with_data(
         &self,
         tool: ToolSpec,

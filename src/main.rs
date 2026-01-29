@@ -54,6 +54,10 @@ struct Cli {
     #[arg(long = "show-models-list")]
     show_models_list: bool,
 
+    /// Show dictionary info (part of speech/inflections) for the input
+    #[arg(long = "pos")]
+    pos: bool,
+
     /// Show translation histories and exit
     #[arg(long = "show-histories")]
     show_histories: bool,
@@ -157,6 +161,7 @@ async fn main() -> Result<()> {
             show_enabled_languages: cli.show_enabled_languages,
             show_enabled_styles: cli.show_enabled_styles,
             show_models_list: cli.show_models_list,
+            pos: cli.pos,
             show_histories: cli.show_histories,
             with_using_tokens: cli.with_using_tokens,
             with_using_model: cli.with_using_model,
