@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::tempdir;
 use tracing::info;
-use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
+use whisper_rs::{get_lang_str, FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 use zip::write::FileOptions;
 use zip::{ZipArchive, ZipWriter};
 
@@ -800,9 +800,18 @@ async fn translate_audio<P: Provider + Clone>(
 }
 
 async fn transcribe_audio(wav_path: &Path, source_lang: &str) -> Result<String> {
-    let transcript = transcribe_audio_with_params(wav_path, source_lang, false).await?;
-    if !transcript.trim().is_empty() {
-        return Ok(transcript);
+    let forced_lang = resolve_forced_lang(source_lang);
+    let outcome = transcribe_audio_with_params(wav_path, forced_lang.as_deref(), false).await?;
+    if !outcome.text.trim().is_empty() {
+        return Ok(outcome.text);
+    }
+    if forced_lang.is_none() {
+        if let Some(detected) = outcome.detected_lang.as_deref() {
+            let retry = transcribe_audio_with_params(wav_path, Some(detected), true).await?;
+            if !retry.text.trim().is_empty() {
+                return Ok(retry.text);
+            }
+        }
     }
 
     info!("audio: no speech detected, retrying with normalization");
@@ -820,14 +829,57 @@ async fn transcribe_audio(wav_path: &Path, source_lang: &str) -> Result<String> 
     ])
     .with_context(|| "failed to normalize audio")?;
 
-    transcribe_audio_with_params(&normalized_path, source_lang, true).await
+    let outcome = transcribe_audio_with_params(&normalized_path, forced_lang.as_deref(), true).await?;
+    if !outcome.text.trim().is_empty() {
+        return Ok(outcome.text);
+    }
+    if forced_lang.is_none() {
+        if let Some(detected) = outcome.detected_lang.as_deref() {
+            let retry = transcribe_audio_with_params(&normalized_path, Some(detected), true).await?;
+            if !retry.text.trim().is_empty() {
+                return Ok(retry.text);
+            }
+        }
+    }
+
+    info!("audio: still empty, retrying with normalization + gain");
+    let boosted_path = dir.join("input_boost.wav");
+    run_ffmpeg(&[
+        "-y",
+        "-i",
+        wav_path.to_string_lossy().as_ref(),
+        "-af",
+        "dynaudnorm,volume=6",
+        boosted_path.to_string_lossy().as_ref(),
+    ])
+    .with_context(|| "failed to normalize audio with gain")?;
+
+    let outcome = transcribe_audio_with_params(&boosted_path, forced_lang.as_deref(), true).await?;
+    if !outcome.text.trim().is_empty() {
+        return Ok(outcome.text);
+    }
+    if forced_lang.is_none() {
+        if let Some(detected) = outcome.detected_lang.as_deref() {
+            let retry = transcribe_audio_with_params(&boosted_path, Some(detected), true).await?;
+            if !retry.text.trim().is_empty() {
+                return Ok(retry.text);
+            }
+        }
+    }
+
+    Ok(outcome.text)
+}
+
+struct TranscribeOutcome {
+    text: String,
+    detected_lang: Option<String>,
 }
 
 async fn transcribe_audio_with_params(
     wav_path: &Path,
-    source_lang: &str,
+    forced_lang: Option<&str>,
     relaxed: bool,
-) -> Result<String> {
+) -> Result<TranscribeOutcome> {
     let model = whisper_model_path().await?;
     let audio = read_wav_mono_f32(wav_path)?;
 
@@ -844,13 +896,15 @@ async fn transcribe_audio_with_params(
     if relaxed {
         params.set_suppress_blank(false);
         params.set_suppress_non_speech_tokens(false);
-        params.set_no_speech_thold(0.0);
-        params.set_temperature(0.2);
+        params.set_no_speech_thold(1.0);
+        params.set_logprob_thold(-5.0);
+        params.set_temperature(0.4);
+        params.set_temperature_inc(0.2);
+        params.set_no_timestamps(true);
+        params.set_single_segment(true);
     }
-    if !source_lang.trim().is_empty() && !source_lang.eq_ignore_ascii_case("auto") {
-        if let Some(code) = map_lang_for_whisper(source_lang) {
-            params.set_language(Some(code));
-        }
+    if let Some(lang) = forced_lang {
+        params.set_language(Some(lang));
     } else {
         params.set_detect_language(true);
     }
@@ -859,6 +913,11 @@ async fn transcribe_audio_with_params(
         .full(params, &audio[..])
         .with_context(|| "whisper transcription failed")?;
 
+    let detected_lang = state
+        .full_lang_id_from_state()
+        .ok()
+        .and_then(|id| get_lang_str(id))
+        .map(|value: &str| value.to_string());
     let num_segments = state
         .full_n_segments()
         .with_context(|| "failed to read segments")?;
@@ -872,7 +931,17 @@ async fn transcribe_audio_with_params(
             parts.push(trimmed.to_string());
         }
     }
-    Ok(parts.join(" "))
+    Ok(TranscribeOutcome {
+        text: parts.join(" "),
+        detected_lang,
+    })
+}
+
+fn resolve_forced_lang(source_lang: &str) -> Option<String> {
+    if source_lang.trim().is_empty() || source_lang.eq_ignore_ascii_case("auto") {
+        return None;
+    }
+    map_lang_for_whisper(source_lang).map(|value| value.to_string())
 }
 
 fn synthesize_speech(text: &str, target_lang: &str, out_wav: &Path) -> Result<()> {
