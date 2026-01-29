@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::tempdir;
 use tracing::info;
+use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 use zip::write::FileOptions;
 use zip::{ZipArchive, ZipWriter};
 
@@ -799,44 +800,45 @@ async fn translate_audio<P: Provider + Clone>(
 }
 
 fn transcribe_audio(wav_path: &Path, source_lang: &str) -> Result<String> {
-    if !command_exists("whisper") {
-        return Err(anyhow!(
-            "audio transcription requires whisper (pip install openai-whisper)"
-        ));
-    }
+    let model = whisper_model_path()?;
+    let audio = read_wav_mono_f32(wav_path)?;
 
-    let dir = wav_path
-        .parent()
-        .ok_or_else(|| anyhow!("invalid wav path"))?;
-    let mut command = Command::new("whisper");
-    command
-        .arg(wav_path)
-        .arg("--model")
-        .arg("base")
-        .arg("--output_format")
-        .arg("txt")
-        .arg("--output_dir")
-        .arg(dir)
-        .arg("--task")
-        .arg("transcribe")
-        .arg("--fp16")
-        .arg("False");
-
+    let model_path = model.to_string_lossy();
+    let ctx =
+        WhisperContext::new_with_params(model_path.as_ref(), WhisperContextParameters::default())
+            .with_context(|| "failed to load whisper model")?;
+    let mut state = ctx
+        .create_state()
+        .with_context(|| "failed to init whisper state")?;
+    let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+    params.set_n_threads(num_cpus::get() as i32);
+    params.set_translate(false);
     if !source_lang.trim().is_empty() && !source_lang.eq_ignore_ascii_case("auto") {
         if let Some(code) = map_lang_for_whisper(source_lang) {
-            command.arg("--language").arg(code);
+            params.set_language(Some(code));
+        }
+    } else {
+        params.set_detect_language(true);
+    }
+
+    state
+        .full(params, &audio[..])
+        .with_context(|| "whisper transcription failed")?;
+
+    let num_segments = state
+        .full_n_segments()
+        .with_context(|| "failed to read segments")?;
+    let mut parts = Vec::new();
+    for idx in 0..num_segments {
+        let text = state
+            .full_get_segment_text(idx)
+            .with_context(|| "failed to read segment text")?;
+        let trimmed = text.trim();
+        if !trimmed.is_empty() {
+            parts.push(trimmed.to_string());
         }
     }
-
-    let output = command.output().with_context(|| "failed to run whisper")?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(anyhow!("whisper failed: {}", stderr.trim()));
-    }
-
-    let txt_path = wav_path.with_extension("txt");
-    let text = fs::read_to_string(&txt_path).with_context(|| "failed to read transcript")?;
-    Ok(text)
+    Ok(parts.join(" "))
 }
 
 fn synthesize_speech(text: &str, target_lang: &str, out_wav: &Path) -> Result<()> {
@@ -931,6 +933,86 @@ fn map_lang_for_whisper(lang: &str) -> Option<&'static str> {
         "th" | "tha" => Some("th"),
         _ => None,
     }
+}
+
+fn whisper_model_path() -> Result<PathBuf> {
+    if let Ok(path) = std::env::var("LLM_TRANSLATOR_WHISPER_MODEL") {
+        let path = path.trim();
+        if !path.is_empty() {
+            let path = PathBuf::from(path);
+            if path.exists() {
+                return Ok(path);
+            }
+        }
+    }
+    if let Ok(path) = std::env::var("WHISPER_CPP_MODEL") {
+        let path = path.trim();
+        if !path.is_empty() {
+            let path = PathBuf::from(path);
+            if path.exists() {
+                return Ok(path);
+            }
+        }
+    }
+
+    if let Ok(home) = std::env::var("HOME") {
+        let home = home.trim();
+        if !home.is_empty() {
+            let candidate =
+                Path::new(home).join(".llm-translator-rust/.cache/whisper/ggml-base.bin");
+            if candidate.exists() {
+                return Ok(candidate);
+            }
+            let candidate = Path::new(home).join(".cache/whisper/ggml-base.bin");
+            if candidate.exists() {
+                return Ok(candidate);
+            }
+        }
+    }
+
+    Err(anyhow!(
+        "whisper model not found. Set LLM_TRANSLATOR_WHISPER_MODEL to a ggml/gguf model path."
+    ))
+}
+
+fn read_wav_mono_f32(path: &Path) -> Result<Vec<f32>> {
+    let mut reader = hound::WavReader::open(path)
+        .with_context(|| format!("failed to open wav: {}", path.display()))?;
+    let spec = reader.spec();
+    let channels = spec.channels as usize;
+    if channels == 0 {
+        return Err(anyhow!("wav has no channels"));
+    }
+
+    let samples: Vec<f32> = match spec.sample_format {
+        hound::SampleFormat::Float => reader.samples::<f32>().map(|s| s.unwrap_or(0.0)).collect(),
+        hound::SampleFormat::Int => {
+            let bits = spec.bits_per_sample;
+            let max = (1i64 << (bits - 1)) as f32;
+            if bits <= 16 {
+                reader
+                    .samples::<i16>()
+                    .map(|s| s.unwrap_or(0) as f32 / max)
+                    .collect()
+            } else {
+                reader
+                    .samples::<i32>()
+                    .map(|s| s.unwrap_or(0) as f32 / max)
+                    .collect()
+            }
+        }
+    };
+
+    if channels == 1 {
+        return Ok(samples);
+    }
+
+    let mut mono = Vec::with_capacity(samples.len() / channels);
+    for chunk in samples.chunks(channels) {
+        let sum: f32 = chunk.iter().sum();
+        mono.push(sum / channels as f32);
+    }
+    Ok(mono)
 }
 
 fn map_lang_for_espeak(lang: &str) -> Option<&'static str> {
