@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 pub mod attachments;
 pub mod data;
+pub mod dictionary;
 pub mod languages;
 mod model_registry;
 pub mod ocr;
@@ -32,6 +33,7 @@ pub struct Config {
     pub show_enabled_languages: bool,
     pub show_enabled_styles: bool,
     pub show_models_list: bool,
+    pub pos: bool,
     pub show_histories: bool,
     pub with_using_tokens: bool,
     pub with_using_model: bool,
@@ -132,6 +134,18 @@ pub async fn run(config: Config, input: Option<String>) -> Result<String> {
     } else {
         input.to_string()
     };
+
+    if config.pos {
+        if data_attachment.is_some() {
+            return Err(anyhow!("--pos only supports text input"));
+        }
+        let execution = dictionary::exec_pos(&translator, input, &options).await?;
+        return Ok(format_execution_output(
+            &execution,
+            with_using_model,
+            with_using_tokens,
+        ));
+    }
 
     if let Some(data) = data_attachment.as_ref() {
         if let Some(output) = attachments::translate_attachment(
