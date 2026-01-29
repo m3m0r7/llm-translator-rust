@@ -762,7 +762,7 @@ async fn translate_audio<P: Provider + Clone>(
     ])
     .with_context(|| "failed to decode audio with ffmpeg")?;
 
-    let transcript = transcribe_audio(&wav_path, &options.source_lang)?;
+    let transcript = transcribe_audio(&wav_path, &options.source_lang).await?;
     let transcript = transcript.trim();
     if transcript.is_empty() {
         return Err(anyhow!("no speech detected in audio"));
@@ -799,8 +799,8 @@ async fn translate_audio<P: Provider + Clone>(
     })
 }
 
-fn transcribe_audio(wav_path: &Path, source_lang: &str) -> Result<String> {
-    let model = whisper_model_path()?;
+async fn transcribe_audio(wav_path: &Path, source_lang: &str) -> Result<String> {
+    let model = whisper_model_path().await?;
     let audio = read_wav_mono_f32(wav_path)?;
 
     let model_path = model.to_string_lossy();
@@ -935,13 +935,18 @@ fn map_lang_for_whisper(lang: &str) -> Option<&'static str> {
     }
 }
 
-fn whisper_model_path() -> Result<PathBuf> {
+const WHISPER_MODEL_BASE_URL: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
+
+async fn whisper_model_path() -> Result<PathBuf> {
     if let Ok(path) = std::env::var("LLM_TRANSLATOR_WHISPER_MODEL") {
         let path = path.trim();
         if !path.is_empty() {
             let path = PathBuf::from(path);
             if path.exists() {
                 return Ok(path);
+            }
+            if let Some(model) = normalize_model_name(path.to_string_lossy().as_ref()) {
+                return ensure_whisper_model(&model).await;
             }
         }
     }
@@ -952,27 +957,104 @@ fn whisper_model_path() -> Result<PathBuf> {
             if path.exists() {
                 return Ok(path);
             }
+            if let Some(model) = normalize_model_name(path.to_string_lossy().as_ref()) {
+                return ensure_whisper_model(&model).await;
+            }
         }
     }
 
+    ensure_whisper_model("base").await
+}
+
+async fn ensure_whisper_model(model: &str) -> Result<PathBuf> {
+    let normalized = normalize_model_name(model).unwrap_or_else(|| "base".to_string());
+    let dest = default_model_path(&normalized)?;
+    if dest.exists() {
+        return Ok(dest);
+    }
+
+    let url = whisper_model_url(&normalized)?;
+    info!("whisper model not found; downloading {} ...", normalized);
+    download_whisper_model(&url, &dest).await?;
+    Ok(dest)
+}
+
+fn default_model_path(model: &str) -> Result<PathBuf> {
+    let file = format!("ggml-{}.bin", model);
     if let Ok(home) = std::env::var("HOME") {
         let home = home.trim();
         if !home.is_empty() {
-            let candidate =
-                Path::new(home).join(".llm-translator-rust/.cache/whisper/ggml-base.bin");
-            if candidate.exists() {
-                return Ok(candidate);
-            }
-            let candidate = Path::new(home).join(".cache/whisper/ggml-base.bin");
-            if candidate.exists() {
-                return Ok(candidate);
-            }
+            return Ok(Path::new(home)
+                .join(".llm-translator-rust/.cache/whisper")
+                .join(file));
         }
     }
+    Ok(Path::new(".llm-translator-rust/.cache/whisper").join(file))
+}
 
-    Err(anyhow!(
-        "whisper model not found. Set LLM_TRANSLATOR_WHISPER_MODEL to a ggml/gguf model path."
-    ))
+fn whisper_model_url(model: &str) -> Result<String> {
+    let file = format!("ggml-{}.bin", model);
+    Ok(format!("{}/{}", WHISPER_MODEL_BASE_URL, file))
+}
+
+fn normalize_model_name(input: &str) -> Option<String> {
+    let raw = input.trim().to_lowercase();
+    if raw.is_empty() {
+        return None;
+    }
+    let trimmed = raw
+        .strip_prefix("ggml-")
+        .unwrap_or(raw.as_str())
+        .strip_suffix(".bin")
+        .unwrap_or(raw.as_str());
+
+    let allowed = [
+        "tiny",
+        "base",
+        "small",
+        "medium",
+        "large",
+        "large-v2",
+        "large-v3",
+        "tiny.en",
+        "base.en",
+        "small.en",
+        "medium.en",
+    ];
+    if allowed.contains(&trimmed) {
+        return Some(trimmed.to_string());
+    }
+    None
+}
+
+async fn download_whisper_model(url: &str, dest: &Path) -> Result<()> {
+    let dir = dest.parent().ok_or_else(|| anyhow!("invalid model path"))?;
+    fs::create_dir_all(dir)
+        .with_context(|| format!("failed to create model dir: {}", dir.display()))?;
+
+    let response = reqwest::get(url)
+        .await
+        .with_context(|| format!("failed to download whisper model: {}", url))?;
+    if !response.status().is_success() {
+        return Err(anyhow!(
+            "failed to download whisper model: {} (status {})",
+            url,
+            response.status()
+        ));
+    }
+
+    let tmp = dest.with_extension("bin.part");
+    let mut file = fs::File::create(&tmp)
+        .with_context(|| format!("failed to write model: {}", tmp.display()))?;
+    let mut stream = response.bytes_stream();
+    use futures_util::StreamExt;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.with_context(|| "failed to read model bytes")?;
+        std::io::Write::write_all(&mut file, &chunk)?;
+    }
+    fs::rename(&tmp, dest)
+        .with_context(|| format!("failed to finalize model: {}", dest.display()))?;
+    Ok(())
 }
 
 fn read_wav_mono_f32(path: &Path) -> Result<Vec<f32>> {
