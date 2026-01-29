@@ -9,6 +9,11 @@ pub const XLSX_MIME: &str = "application/vnd.openxmlformats-officedocument.sprea
 pub const PDF_MIME: &str = "application/pdf";
 pub const DOC_MIME: &str = "application/msword";
 pub const TEXT_MIME: &str = "text/plain";
+pub const MP3_MIME: &str = "audio/mpeg";
+pub const WAV_MIME: &str = "audio/wav";
+pub const M4A_MIME: &str = "audio/mp4";
+pub const FLAC_MIME: &str = "audio/flac";
+pub const OGG_MIME: &str = "audio/ogg";
 
 #[derive(Debug, Clone)]
 pub struct DataAttachment {
@@ -79,6 +84,11 @@ fn resolve_mime(input: &str, bytes: &[u8], path: Option<&Path>) -> Result<String
         "xlsx" => return Ok(XLSX_MIME.to_string()),
         "txt" => return Ok(TEXT_MIME.to_string()),
         "text" => return Ok(TEXT_MIME.to_string()),
+        "mp3" => return Ok(MP3_MIME.to_string()),
+        "wav" => return Ok(WAV_MIME.to_string()),
+        "m4a" => return Ok(M4A_MIME.to_string()),
+        "flac" => return Ok(FLAC_MIME.to_string()),
+        "ogg" => return Ok(OGG_MIME.to_string()),
         "png" => return Ok("image/png".to_string()),
         "jpg" | "jpeg" => return Ok("image/jpeg".to_string()),
         "gif" => return Ok("image/gif".to_string()),
@@ -95,15 +105,23 @@ fn resolve_mime(input: &str, bytes: &[u8], path: Option<&Path>) -> Result<String
         || lower == PDF_MIME
         || lower == DOC_MIME
         || lower == TEXT_MIME
+        || lower == MP3_MIME
+        || lower == WAV_MIME
+        || lower == M4A_MIME
+        || lower == FLAC_MIME
+        || lower == OGG_MIME
     {
         return Ok(lower);
     }
     if lower.starts_with("image/") {
         return Ok(lower);
     }
+    if lower.starts_with("audio/") {
+        return Ok(lower);
+    }
 
     Err(anyhow!(
-        "unsupported --data-mime '{}' (expected auto, image/*, pdf, doc, docx, docs, pptx, xlsx, txt)",
+        "unsupported --data-mime '{}' (expected auto, image/*, pdf, doc, docx, docs, pptx, xlsx, txt, mp3, wav, m4a, flac, ogg)",
         raw
     ))
 }
@@ -142,6 +160,9 @@ fn sniff_mime_bytes(bytes: &[u8]) -> Option<&'static str> {
     let kind = infer::get(bytes)?;
     let detected = kind.mime_type();
     if detected.starts_with("image/") {
+        return Some(detected);
+    }
+    if detected.starts_with("audio/") {
         return Some(detected);
     }
     match detected {
@@ -190,6 +211,11 @@ fn mime_from_extension(ext: &str) -> Option<&'static str> {
         "pptx" => Some(PPTX_MIME),
         "xlsx" => Some(XLSX_MIME),
         "txt" => Some(TEXT_MIME),
+        "mp3" => Some(MP3_MIME),
+        "wav" => Some(WAV_MIME),
+        "m4a" => Some(M4A_MIME),
+        "flac" => Some(FLAC_MIME),
+        "ogg" => Some(OGG_MIME),
         "png" => Some("image/png"),
         "jpg" | "jpeg" => Some("image/jpeg"),
         "webp" => Some("image/webp"),
@@ -209,6 +235,11 @@ pub fn extension_from_mime(mime: &str) -> Option<&'static str> {
         PPTX_MIME => Some("pptx"),
         XLSX_MIME => Some("xlsx"),
         TEXT_MIME => Some("txt"),
+        MP3_MIME => Some("mp3"),
+        WAV_MIME => Some("wav"),
+        M4A_MIME => Some("m4a"),
+        FLAC_MIME => Some("flac"),
+        OGG_MIME => Some("ogg"),
         "image/png" => Some("png"),
         "image/jpeg" | "image/jpg" => Some("jpg"),
         "image/webp" => Some("webp"),

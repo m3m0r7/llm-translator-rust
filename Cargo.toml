@@ -24,6 +24,8 @@ quick-xml = "0.31"
 zip = { version = "0.6", default-features = false, features = ["deflate"] }
 printpdf = { version = "0.6", features = ["embedded_images"] }
 ttf-parser = { version = "0.25", features = ["std"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt"] }
 
 [dev-dependencies]
 insta = { version = "1.42", features = ["json"] }

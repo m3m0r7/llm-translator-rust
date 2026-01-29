@@ -1,4 +1,5 @@
 use anyhow::Result;
+use tracing::info;
 
 use crate::data::{DataAttachment, DataInfo};
 use crate::languages::LanguageRegistry;
@@ -81,6 +82,17 @@ impl<P: Provider + Clone> Translator<P> {
         input: TranslationInput,
         options: TranslateOptions,
     ) -> Result<ExecutionOutput> {
+        info!(
+            "translate request (lang={}, source_lang={}, slang={}, data={})",
+            options.lang,
+            options.source_lang,
+            options.slang,
+            input
+                .data
+                .as_ref()
+                .map(|d| d.mime.as_str())
+                .unwrap_or("none")
+        );
         let tool = tool_spec(TOOL_NAME);
         let data_info: Option<DataInfo> = input.data.as_ref().map(|data| data.info());
         let system_prompt = translations::render_system_prompt_with_data(
