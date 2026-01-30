@@ -319,8 +319,9 @@ eng = "英語"
 | `-f` | `--formal` | スタイルキー（`settings.toml` の `[formally]` 参照） | `formal` |
 | `-L` | `--source-lang` | 入力言語（ISO 639-1/2/3 または `auto`） | `auto` |
 | `-s` | `--slang` | スラングのキーワードを許可 | `false` |
-| `-d` | `--data` | 添付ファイル（画像/doc/docx/pptx/xlsx/pdf/txt/音声） |  |
-| `-M` | `--data-mime` | `--data` または stdin の MIME（`auto`, `image/*`, `pdf`, `doc`, `docx`, `docs`, `pptx`, `xlsx`, `txt`, `mp3`, `wav`, `m4a`, `flac`, `ogg`） | `auto` |
+| `-d` | `--data` | 添付ファイル（画像/doc/docx/pptx/xlsx/pdf/txt/html/json/yaml/po/音声） |  |
+| `-M` | `--data-mime` | `--data` または stdin の MIME（`auto`, `image/*`, `pdf`, `doc`, `docx`, `docs`, `pptx`, `xlsx`, `txt`, `html`, `json`, `yaml`, `po`, `mp3`, `wav`, `m4a`, `flac`, `ogg`） | `auto` |
+|  | `--with-commentout` | コメントアウトも翻訳する（HTML/YAML/PO） |  |
 |  | `--show-enabled-languages` | 有効な翻訳言語を表示 |  |
 |  | `--show-enabled-styles` | 有効なスタイルキーを表示 |  |
 |  | `--show-models-list` | 取得済みモデル一覧を表示（provider:model） |  |

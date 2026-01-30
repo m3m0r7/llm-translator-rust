@@ -9,6 +9,10 @@ pub const XLSX_MIME: &str = "application/vnd.openxmlformats-officedocument.sprea
 pub const PDF_MIME: &str = "application/pdf";
 pub const DOC_MIME: &str = "application/msword";
 pub const TEXT_MIME: &str = "text/plain";
+pub const HTML_MIME: &str = "text/html";
+pub const JSON_MIME: &str = "application/json";
+pub const YAML_MIME: &str = "text/yaml";
+pub const PO_MIME: &str = "text/x-po";
 pub const MP3_MIME: &str = "audio/mpeg";
 pub const WAV_MIME: &str = "audio/wav";
 pub const M4A_MIME: &str = "audio/mp4";
@@ -84,6 +88,10 @@ fn resolve_mime(input: &str, bytes: &[u8], path: Option<&Path>) -> Result<String
         "xlsx" => return Ok(XLSX_MIME.to_string()),
         "txt" => return Ok(TEXT_MIME.to_string()),
         "text" => return Ok(TEXT_MIME.to_string()),
+        "html" | "htm" => return Ok(HTML_MIME.to_string()),
+        "json" => return Ok(JSON_MIME.to_string()),
+        "yaml" | "yml" => return Ok(YAML_MIME.to_string()),
+        "po" => return Ok(PO_MIME.to_string()),
         "mp3" => return Ok(MP3_MIME.to_string()),
         "wav" => return Ok(WAV_MIME.to_string()),
         "m4a" => return Ok(M4A_MIME.to_string()),
@@ -105,13 +113,28 @@ fn resolve_mime(input: &str, bytes: &[u8], path: Option<&Path>) -> Result<String
         || lower == PDF_MIME
         || lower == DOC_MIME
         || lower == TEXT_MIME
+        || lower == HTML_MIME
+        || lower == JSON_MIME
+        || lower == YAML_MIME
+        || lower == PO_MIME
+        || lower == "application/x-yaml"
+        || lower == "application/yaml"
+        || lower == "text/x-yaml"
+        || lower == "text/x-gettext-translation"
+        || lower == "application/x-gettext-translation"
         || lower == MP3_MIME
         || lower == WAV_MIME
         || lower == M4A_MIME
         || lower == FLAC_MIME
         || lower == OGG_MIME
     {
-        return Ok(lower);
+        return Ok(match lower.as_str() {
+            "application/x-yaml" | "application/yaml" | "text/x-yaml" => YAML_MIME.to_string(),
+            "text/x-gettext-translation" | "application/x-gettext-translation" => {
+                PO_MIME.to_string()
+            }
+            _ => lower,
+        });
     }
     if lower.starts_with("image/") {
         return Ok(lower);
@@ -121,7 +144,7 @@ fn resolve_mime(input: &str, bytes: &[u8], path: Option<&Path>) -> Result<String
     }
 
     Err(anyhow!(
-        "unsupported --data-mime '{}' (expected auto, image/*, pdf, doc, docx, docs, pptx, xlsx, txt, mp3, wav, m4a, flac, ogg)",
+        "unsupported --data-mime '{}' (expected auto, image/*, pdf, doc, docx, docs, pptx, xlsx, txt, html, json, yaml, po, mp3, wav, m4a, flac, ogg)",
         raw
     ))
 }
@@ -166,6 +189,12 @@ fn sniff_mime_bytes(bytes: &[u8]) -> Option<&'static str> {
         return Some(detected);
     }
     match detected {
+        HTML_MIME => Some(HTML_MIME),
+        JSON_MIME => Some(JSON_MIME),
+        YAML_MIME | "application/x-yaml" | "text/x-yaml" => Some(YAML_MIME),
+        PO_MIME | "text/x-gettext-translation" | "application/x-gettext-translation" => {
+            Some(PO_MIME)
+        }
         PDF_MIME => Some(PDF_MIME),
         DOC_MIME => Some(DOC_MIME),
         TEXT_MIME => Some(TEXT_MIME),
@@ -211,6 +240,10 @@ fn mime_from_extension(ext: &str) -> Option<&'static str> {
         "pptx" => Some(PPTX_MIME),
         "xlsx" => Some(XLSX_MIME),
         "txt" => Some(TEXT_MIME),
+        "html" | "htm" => Some(HTML_MIME),
+        "json" => Some(JSON_MIME),
+        "yaml" | "yml" => Some(YAML_MIME),
+        "po" => Some(PO_MIME),
         "mp3" => Some(MP3_MIME),
         "wav" => Some(WAV_MIME),
         "m4a" => Some(M4A_MIME),
@@ -235,6 +268,10 @@ pub fn extension_from_mime(mime: &str) -> Option<&'static str> {
         PPTX_MIME => Some("pptx"),
         XLSX_MIME => Some("xlsx"),
         TEXT_MIME => Some("txt"),
+        HTML_MIME => Some("html"),
+        JSON_MIME => Some("json"),
+        YAML_MIME => Some("yaml"),
+        PO_MIME => Some("po"),
         MP3_MIME => Some("mp3"),
         WAV_MIME => Some("wav"),
         M4A_MIME => Some("m4a"),
