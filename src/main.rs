@@ -34,11 +34,11 @@ struct Cli {
     #[arg(short = 's', long = "slang")]
     slang: bool,
 
-    /// File to translate (image/doc/docx/pptx/xlsx/pdf/txt/audio)
+    /// File to translate (image/doc/docx/pptx/xlsx/pdf/txt/html/json/yaml/po/audio)
     #[arg(short = 'd', long = "data")]
     data: Option<String>,
 
-    /// Mime type for --data (auto, image/*, pdf, doc, docx, docs, pptx, xlsx, txt, mp3, wav, m4a, flac, ogg)
+    /// Mime type for --data (auto, image/*, pdf, doc, docx, docs, pptx, xlsx, txt, html, json, yaml, po, mp3, wav, m4a, flac, ogg)
     #[arg(short = 'M', long = "data-mime")]
     data_mime: Option<String>,
 
@@ -77,6 +77,10 @@ struct Cli {
     /// Read extra settings from a local TOML file
     #[arg(short = 'r', long = "read-settings")]
     read_settings: Option<String>,
+
+    /// Translate comment-out text for supported formats
+    #[arg(long = "with-commentout")]
+    with_commentout: bool,
 
     /// Output OCR debug overlays for attachments
     #[arg(long = "debug-ocr")]
@@ -187,6 +191,7 @@ async fn main() -> Result<()> {
             show_histories: cli.show_histories,
             with_using_tokens: cli.with_using_tokens,
             with_using_model: cli.with_using_model,
+            with_commentout: cli.with_commentout,
             debug_ocr: cli.debug_ocr,
             verbose: cli.verbose,
             whisper_model: cli.whisper_model,
@@ -225,6 +230,7 @@ impl InteractiveState {
                 show_histories: false,
                 with_using_tokens: cli.with_using_tokens,
                 with_using_model: cli.with_using_model,
+                with_commentout: cli.with_commentout,
                 debug_ocr: cli.debug_ocr,
                 verbose: cli.verbose,
                 whisper_model: cli.whisper_model.clone(),
@@ -404,6 +410,11 @@ async fn handle_interactive_command(input: &str, state: &mut InteractiveState) -
         println!("with-using-tokens: {}", state.config.with_using_tokens);
         return Ok(false);
     }
+    if let Some(arg) = trimmed.strip_prefix("/with-commentout") {
+        state.config.with_commentout = parse_toggle(arg, state.config.with_commentout)?;
+        println!("with-commentout: {}", state.config.with_commentout);
+        return Ok(false);
+    }
     if let Some(arg) = trimmed.strip_prefix("/data") {
         let value = arg.trim();
         if value.is_empty() {
@@ -486,6 +497,7 @@ fn print_interactive_help() {
     println!("  /pos [on|off]                Toggle dictionary mode");
     println!("  /with-using-model [on|off]   Toggle model suffix output");
     println!("  /with-using-tokens [on|off]  Toggle token usage output");
+    println!("  /with-commentout [on|off]    Toggle comment translation");
     println!("  /data <path|clear>           Set attachment file");
     println!("  /data-mime <mime|clear>      Set attachment mime");
     println!("  /key <api-key>               Set API key");

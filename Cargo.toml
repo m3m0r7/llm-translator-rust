@@ -30,6 +30,7 @@ whisper-rs = { version = "0.11", features = ["whisper-cpp-tracing"] }
 hound = "3"
 num_cpus = "1"
 futures-util = "0.3"
+kuchiki = "0.8"
 
 [dev-dependencies]
 insta = { version = "1.42", features = ["json"] }

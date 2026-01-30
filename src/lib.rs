@@ -40,6 +40,7 @@ pub struct Config {
     pub show_histories: bool,
     pub with_using_tokens: bool,
     pub with_using_model: bool,
+    pub with_commentout: bool,
     pub debug_ocr: bool,
     pub verbose: bool,
     pub whisper_model: Option<String>,
@@ -179,6 +180,7 @@ pub async fn run(config: Config, input: Option<String>) -> Result<String> {
             &ocr_languages,
             &translator,
             &options,
+            config.with_commentout,
             config.debug_ocr,
             history_src.as_deref().map(Path::new),
         )

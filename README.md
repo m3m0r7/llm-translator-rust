@@ -319,8 +319,9 @@ eng = "英語"
 | `-f` | `--formal` | Formality key (from `settings.toml` `[formally]`) | `formal` |
 | `-L` | `--source-lang` | Source language (ISO 639-1/2/3 or `auto`) | `auto` |
 | `-s` | `--slang` | Include slang keywords when appropriate | `false` |
-| `-d` | `--data` | File attachment (image/doc/docx/pptx/xlsx/pdf/txt/audio) |  |
-| `-M` | `--data-mime` | Mime type for `--data` (or stdin) (`auto`, `image/*`, `pdf`, `doc`, `docx`, `docs`, `pptx`, `xlsx`, `txt`, `mp3`, `wav`, `m4a`, `flac`, `ogg`) | `auto` |
+| `-d` | `--data` | File attachment (image/doc/docx/pptx/xlsx/pdf/txt/html/json/yaml/po/audio) |  |
+| `-M` | `--data-mime` | Mime type for `--data` (or stdin) (`auto`, `image/*`, `pdf`, `doc`, `docx`, `docs`, `pptx`, `xlsx`, `txt`, `html`, `json`, `yaml`, `po`, `mp3`, `wav`, `m4a`, `flac`, `ogg`) | `auto` |
+|  | `--with-commentout` | Translate comment-out text (HTML/YAML/PO) |  |
 |  | `--show-enabled-languages` | Show enabled translation languages |  |
 |  | `--show-enabled-styles` | Show enabled style keys |  |
 |  | `--show-models-list` | Show cached model list (provider:model) |  |
