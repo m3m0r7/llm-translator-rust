@@ -126,7 +126,53 @@ cat ./report.pdf | llm-translator-rust --data-mime pdf -l en
 # (N) original (reading): translated
 # - reading is a Latin-script pronunciation for non-Latin text (e.g., romaji/pinyin).
 # - identical translations share the same number.
-# When using --data with a file path, a sibling file named *_translated.<ext> is also written.
+# When using --data with a file path (and without --overwrite), a sibling file is written.
+# The suffix comes from settings.toml [system].translated_suffix (default: _translated).
+# When --data points to a directory, a sibling output directory is created with the same suffix.
+```
+
+## Directory translation
+
+When `--data` points to a directory, the CLI walks it recursively and translates each supported file.
+The relative directory structure is preserved in the output directory.
+
+```bash
+llm-translator-rust --data ./docs -l ja
+# Output: ./docs_translated (default suffix; configurable via settings.toml)
+```
+
+Notes:
+- `--data-mime` applies to every file in the directory; leave it as `auto` for mixed file types.
+- Files that cannot be read or whose mime cannot be detected are reported as failures; files that
+  are detected but not supported by the translator are skipped.
+- Directory translation runs concurrently (default 3 threads). Use
+  `--directory-translation-threads` or `settings.toml` to change it.
+- Files can be excluded with `--ignore-translation-file` or an ignore file
+  (default: `.llm-translation-rust-ignore`, configurable via `settings.toml`).
+  Patterns follow `.gitignore` rules (`*`, `**`, `!`, comments).
+- Ignore rules apply only when `--data` points to a directory.
+- Use `--out` to choose the output directory for directory translation.
+- When a directory translation fails, the original file is copied to the output directory.
+
+## Overwrite mode (--overwrite)
+
+`--overwrite` writes results in place for files or directories passed via `--data`.
+Before writing, each file is backed up to `~/.llm-translated-rust/backup`.
+Retention is controlled by `settings.toml` `[system].backup_ttl_days` (default: 30).
+
+```bash
+llm-translator-rust --data ./docs --overwrite -l ja
+llm-translator-rust --data ./slide.pdf --overwrite -l en
+```
+
+## Output path (--out)
+
+`--out` sets the output path for file or directory translations.
+It cannot be used with `--overwrite`.
+
+```bash
+llm-translator-rust --data ./docs -l ja --out ./outdir
+llm-translator-rust --data ./slide.pdf -l en --out ./translated.pdf
 ```
 
 ## Dictionary (--pos)
@@ -272,6 +318,8 @@ You can also pass `-r/--read-settings` to load an additional local TOML file (hi
 [system]
 languages = ["jpn", "eng", ...]
 histories = 10
+directory_translation_threads = 3
+translation_ignore_file = ".llm-translation-rust-ignore"
 
 [formally]
 casual = "Use casual, natural everyday speech."
@@ -332,6 +380,10 @@ eng = "英語"
 |  | `--with-using-model` | Append model name to output |  |
 |  | `--debug-ocr` | Output OCR debug overlays/JSON for attachments |  |
 |  | `--whisper-model` | Whisper model name or path |  |
+|  | `--overwrite` | Overwrite input files in place (backups stored in `~/.llm-translated-rust/backup`) |  |
+|  | `--directory-translation-threads` | Directory translation concurrency |  |
+|  | `--ignore-translation-file` | Ignore patterns for directory translation (gitignore-like) |  |
+| `-o` | `--out` | Output path for translated file or directory |  |
 |  | `--verbose` | Verbose logging |  |
 | `-i` | `--interactive` | Interactive mode |  |
 | `-r` | `--read-settings` | Read extra settings TOML file |  |

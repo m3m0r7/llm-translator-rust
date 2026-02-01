@@ -126,7 +126,52 @@ cat ./report.pdf | llm-translator-rust --data-mime pdf -l en
 # (N) 原文 (読み): 翻訳
 # - 読みは非ラテン文字の発音をラテン文字で表記（例: ローマ字/ピンイン）
 # - 同じ翻訳語は同じ番号になります
-# --data でファイルを指定した場合は、同じ場所に *_translated.<ext> も出力します。
+# --data でファイルを指定した場合（--overwrite なし）は、同じ場所に出力します。
+# 接尾辞は settings.toml の [system].translated_suffix（既定: _translated）。
+# --data にディレクトリを指定した場合は、同じ接尾辞の出力ディレクトリを作成します。
+```
+
+## ディレクトリ翻訳
+
+`--data` にディレクトリを渡すと再帰的に走査し、対応ファイルを翻訳します。
+相対パス構成は出力ディレクトリに維持されます。
+
+```bash
+llm-translator-rust --data ./docs -l ja
+# 出力: ./docs_translated（既定の接尾辞。settings.toml で変更可）
+```
+
+補足:
+- `--data-mime` はディレクトリ内の全ファイルに適用されます。混在する場合は `auto` のままにしてください。
+- 読み込み不可や MIME 判定失敗は failure として報告され、対応外の形式は skip されます。
+- ディレクトリ翻訳は並列実行します（既定 3 スレッド）。`--directory-translation-threads` または
+  `settings.toml` で変更できます。
+- `--ignore-translation-file` または無視ファイル（既定: `.llm-translation-rust-ignore`、
+  `settings.toml` で変更可）で翻訳対象から除外できます。
+  パターンは `.gitignore` と同様です（`*`, `**`, `!`, コメント）。
+- 無視ルールは `--data` がディレクトリのときのみ適用されます。
+- ディレクトリ翻訳で失敗したファイルは、元の内容をそのまま出力先へコピーします。
+- 出力先ディレクトリは `--out` で指定できます。
+
+## 上書きモード (--overwrite)
+
+`--overwrite` は `--data` で指定したファイル/ディレクトリに上書きで書き込みます。
+書き込み前に `~/.llm-translated-rust/backup` へバックアップします。
+保持期間は `settings.toml` の `[system].backup_ttl_days`（既定: 30）で制御します。
+
+```bash
+llm-translator-rust --data ./docs --overwrite -l ja
+llm-translator-rust --data ./slide.pdf --overwrite -l en
+```
+
+## 出力先 (--out)
+
+`--out` でファイル/ディレクトリの出力先を指定できます。
+`--overwrite` と同時には使えません。
+
+```bash
+llm-translator-rust --data ./docs -l ja --out ./outdir
+llm-translator-rust --data ./slide.pdf -l en --out ./translated.pdf
 ```
 
 ## 辞書機能（--pos）
@@ -272,6 +317,8 @@ choco install tesseract ffmpeg
 [system]
 languages = ["jpn", "eng", ...]
 histories = 10
+directory_translation_threads = 3
+translation_ignore_file = ".llm-translation-rust-ignore"
 
 [formally]
 casual = "Use casual, natural everyday speech."
@@ -332,6 +379,10 @@ eng = "英語"
 |  | `--with-using-model` | 使用モデル名を付加 |  |
 |  | `--debug-ocr` | OCR デバッグ用の bbox 画像/JSON を出力 |  |
 |  | `--whisper-model` | Whisper モデル名またはパス |  |
+|  | `--overwrite` | 入力ファイル/ディレクトリを上書き（バックアップは `~/.llm-translated-rust/backup`） |  |
+|  | `--directory-translation-threads` | ディレクトリ翻訳の並列数 |  |
+|  | `--ignore-translation-file` | ディレクトリ翻訳の無視パターン（gitignore 形式） |  |
+| `-o` | `--out` | 出力先（ファイル/ディレクトリ） |  |
 |  | `--verbose` | 詳細ログを出力 |  |
 | `-i` | `--interactive` | インタラクティブモード |  |
 | `-r` | `--read-settings` | 追加の設定 TOML を読み込む |  |

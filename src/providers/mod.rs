@@ -8,6 +8,7 @@ use crate::data::DataAttachment;
 mod claude;
 mod gemini;
 mod openai;
+pub(crate) mod retry;
 
 pub use claude::Claude;
 pub use gemini::Gemini;

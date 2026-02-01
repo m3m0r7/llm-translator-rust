@@ -26,6 +26,14 @@ engineer = "Use precise, technical phrasing suitable for engineers."
 # Use ISO 639-3 codes. The first entry is the UI language for labels.
 [system]
 histories = 10
+# Suffix appended to translated file/dir names when not using --overwrite
+translated_suffix = "_translated"
+# Backup TTL (days) for --overwrite
+backup_ttl_days = 30
+# Directory translation concurrency
+directory_translation_threads = 3
+# Ignore file name for directory translation (gitignore-like patterns)
+translation_ignore_file = ".llm-translation-rust-ignore"
 languages = [
   "eng",
   "jpn",

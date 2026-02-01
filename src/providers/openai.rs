@@ -4,6 +4,9 @@ use base64::Engine;
 use serde::Deserialize;
 use serde_json::json;
 
+use super::retry::{
+    is_rate_limited, retry_after, wait_with_backoff, RATE_LIMIT_BASE_DELAY, RATE_LIMIT_MAX_RETRIES,
+};
 use super::{
     Message, MessagePart, MessageRole, Provider, ProviderFuture, ProviderResponse, ProviderUsage,
     ToolSpec,
@@ -150,24 +153,33 @@ async fn call_with_chat_completions(
         "tool_choice": {"type": "function", "function": {"name": tool.name}}
     });
 
-    let response = client
-        .post(url)
-        .bearer_auth(provider.key)
-        .json(&body)
-        .send()
-        .await?;
+    let mut attempt = 0usize;
+    let mut delay = RATE_LIMIT_BASE_DELAY;
+    loop {
+        attempt += 1;
+        let response = client
+            .post(&url)
+            .bearer_auth(provider.key.clone())
+            .json(&body)
+            .send()
+            .await?;
 
-    let status = response.status();
-    let text = response.text().await.unwrap_or_default();
-    if !status.is_success() {
+        let status = response.status();
+        let retry_after = retry_after(response.headers());
+        let text = response.text().await.unwrap_or_default();
+        if status.is_success() {
+            return extract_tool_response(&text, tool_name, &provider.model);
+        }
+        if is_rate_limited(status, &text) && attempt < RATE_LIMIT_MAX_RETRIES {
+            delay = wait_with_backoff("OpenAI", attempt, delay, retry_after).await;
+            continue;
+        }
         return Err(anyhow!(
             "OpenAI API error ({}): {}",
             status,
             extract_openai_error(&text).unwrap_or(text)
         ));
     }
-
-    extract_tool_response(&text, tool_name, &provider.model)
 }
 
 async fn call_with_responses(
@@ -225,24 +237,33 @@ async fn call_with_responses(
         body["instructions"] = json!(system);
     }
 
-    let response = client
-        .post(url)
-        .bearer_auth(provider.key)
-        .json(&body)
-        .send()
-        .await?;
+    let mut attempt = 0usize;
+    let mut delay = RATE_LIMIT_BASE_DELAY;
+    loop {
+        attempt += 1;
+        let response = client
+            .post(&url)
+            .bearer_auth(provider.key.clone())
+            .json(&body)
+            .send()
+            .await?;
 
-    let status = response.status();
-    let text = response.text().await.unwrap_or_default();
-    if !status.is_success() {
+        let status = response.status();
+        let retry_after = retry_after(response.headers());
+        let text = response.text().await.unwrap_or_default();
+        if status.is_success() {
+            return extract_response_tool_call(&text, tool_name, &provider.model);
+        }
+        if is_rate_limited(status, &text) && attempt < RATE_LIMIT_MAX_RETRIES {
+            delay = wait_with_backoff("OpenAI", attempt, delay, retry_after).await;
+            continue;
+        }
         return Err(anyhow!(
             "OpenAI API error ({}): {}",
             status,
             extract_openai_error(&text).unwrap_or(text)
         ));
     }
-
-    extract_response_tool_call(&text, tool_name, &provider.model)
 }
 
 fn extract_tool_response(

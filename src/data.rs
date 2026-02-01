@@ -14,6 +14,7 @@ pub const HTML_MIME: &str = "text/html";
 pub const JSON_MIME: &str = "application/json";
 pub const YAML_MIME: &str = "text/yaml";
 pub const PO_MIME: &str = "text/x-po";
+pub const XML_MIME: &str = "application/xml";
 pub const MP3_MIME: &str = "audio/mpeg";
 pub const WAV_MIME: &str = "audio/wav";
 pub const M4A_MIME: &str = "audio/mp4";
@@ -94,6 +95,7 @@ fn resolve_mime(input: &str, bytes: &[u8], path: Option<&Path>) -> Result<String
         "json" => return Ok(JSON_MIME.to_string()),
         "yaml" | "yml" => return Ok(YAML_MIME.to_string()),
         "po" => return Ok(PO_MIME.to_string()),
+        "xml" => return Ok(XML_MIME.to_string()),
         "mp3" => return Ok(MP3_MIME.to_string()),
         "wav" => return Ok(WAV_MIME.to_string()),
         "m4a" => return Ok(M4A_MIME.to_string()),
@@ -120,12 +122,14 @@ fn resolve_mime(input: &str, bytes: &[u8], path: Option<&Path>) -> Result<String
         || lower == JSON_MIME
         || lower == YAML_MIME
         || lower == PO_MIME
+        || lower == XML_MIME
         || lower == "text/x-markdown"
         || lower == "application/markdown"
         || lower == "application/x-markdown"
         || lower == "application/x-yaml"
         || lower == "application/yaml"
         || lower == "text/x-yaml"
+        || lower == "text/xml"
         || lower == "text/x-gettext-translation"
         || lower == "application/x-gettext-translation"
         || lower == MP3_MIME
@@ -139,6 +143,7 @@ fn resolve_mime(input: &str, bytes: &[u8], path: Option<&Path>) -> Result<String
                 MARKDOWN_MIME.to_string()
             }
             "application/x-yaml" | "application/yaml" | "text/x-yaml" => YAML_MIME.to_string(),
+            "text/xml" => XML_MIME.to_string(),
             "text/x-gettext-translation" | "application/x-gettext-translation" => {
                 PO_MIME.to_string()
             }
@@ -153,7 +158,7 @@ fn resolve_mime(input: &str, bytes: &[u8], path: Option<&Path>) -> Result<String
     }
 
     Err(anyhow!(
-        "unsupported --data-mime '{}' (expected auto, image/*, pdf, doc, docx, docs, pptx, xlsx, txt, md, markdown, html, json, yaml, po, mp3, wav, m4a, flac, ogg)",
+        "unsupported --data-mime '{}' (expected auto, image/*, pdf, doc, docx, docs, pptx, xlsx, txt, md, markdown, html, json, yaml, po, xml, mp3, wav, m4a, flac, ogg)",
         raw
     ))
 }
@@ -212,6 +217,7 @@ fn sniff_mime_bytes(bytes: &[u8]) -> Option<&'static str> {
         PO_MIME | "text/x-gettext-translation" | "application/x-gettext-translation" => {
             Some(PO_MIME)
         }
+        "text/xml" | "application/xml" => Some(XML_MIME),
         PDF_MIME => Some(PDF_MIME),
         DOC_MIME => Some(DOC_MIME),
         TEXT_MIME => Some(TEXT_MIME),
@@ -262,6 +268,7 @@ fn mime_from_extension(ext: &str) -> Option<&'static str> {
         "json" => Some(JSON_MIME),
         "yaml" | "yml" => Some(YAML_MIME),
         "po" => Some(PO_MIME),
+        "xml" => Some(XML_MIME),
         "mp3" => Some(MP3_MIME),
         "wav" => Some(WAV_MIME),
         "m4a" => Some(M4A_MIME),
@@ -291,6 +298,7 @@ pub fn extension_from_mime(mime: &str) -> Option<&'static str> {
         JSON_MIME => Some("json"),
         YAML_MIME => Some("yaml"),
         PO_MIME => Some("po"),
+        XML_MIME | "text/xml" => Some("xml"),
         MP3_MIME => Some("mp3"),
         WAV_MIME => Some("wav"),
         M4A_MIME => Some("m4a"),
@@ -304,5 +312,70 @@ pub fn extension_from_mime(mime: &str) -> Option<&'static str> {
         "image/tiff" => Some("tiff"),
         "image/heic" => Some("heic"),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::codecs::png::PngEncoder;
+    use image::{ImageEncoder, Rgba, RgbaImage};
+
+    fn png_bytes() -> Vec<u8> {
+        let image = RgbaImage::from_pixel(1, 1, Rgba([0, 0, 0, 0]));
+        let mut bytes = Vec::new();
+        let encoder = PngEncoder::new(&mut bytes);
+        encoder
+            .write_image(&image, 1, 1, image::ColorType::Rgba8.into())
+            .expect("encode png");
+        bytes
+    }
+
+    #[test]
+    fn resolve_mime_explicit_hints() {
+        let cases = [
+            ("pdf", PDF_MIME),
+            ("doc", DOC_MIME),
+            ("docx", DOCX_MIME),
+            ("docs", DOCX_MIME),
+            ("pptx", PPTX_MIME),
+            ("xlsx", XLSX_MIME),
+            ("txt", TEXT_MIME),
+            ("md", MARKDOWN_MIME),
+            ("markdown", MARKDOWN_MIME),
+            ("html", HTML_MIME),
+            ("json", JSON_MIME),
+            ("yaml", YAML_MIME),
+            ("po", PO_MIME),
+            ("xml", XML_MIME),
+            ("mp3", MP3_MIME),
+            ("wav", WAV_MIME),
+            ("m4a", M4A_MIME),
+            ("flac", FLAC_MIME),
+            ("ogg", OGG_MIME),
+        ];
+        for (hint, expected) in cases {
+            let mime = resolve_mime(hint, b"", None).expect("resolve mime");
+            assert_eq!(mime, expected);
+        }
+    }
+
+    #[test]
+    fn resolve_mime_auto_uses_extension_for_xml() {
+        let mime = resolve_mime("auto", b"<root>hello</root>", Some(Path::new("sample.xml")))
+            .expect("resolve auto xml");
+        assert_eq!(mime, XML_MIME);
+    }
+
+    #[test]
+    fn resolve_mime_image_requires_image_bytes() {
+        let bytes = png_bytes();
+        let mime = resolve_mime("image/*", &bytes, None).expect("resolve image");
+        assert_eq!(mime, "image/png");
+    }
+
+    #[test]
+    fn extension_for_xml_mime() {
+        assert_eq!(extension_from_mime(XML_MIME), Some("xml"));
     }
 }

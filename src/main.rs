@@ -34,11 +34,11 @@ struct Cli {
     #[arg(short = 's', long = "slang")]
     slang: bool,
 
-    /// File to translate (image/doc/docx/pptx/xlsx/pdf/txt/md/html/json/yaml/po/audio)
+    /// File or directory to translate (image/doc/docx/pptx/xlsx/pdf/txt/md/html/json/yaml/po/xml/audio)
     #[arg(short = 'd', long = "data")]
     data: Option<String>,
 
-    /// Mime type for --data (auto, image/*, pdf, doc, docx, docs, pptx, xlsx, txt, md, markdown, html, json, yaml, po, mp3, wav, m4a, flac, ogg)
+    /// Mime type for --data (auto, image/*, pdf, doc, docx, docs, pptx, xlsx, txt, md, markdown, html, json, yaml, po, xml, mp3, wav, m4a, flac, ogg)
     #[arg(short = 'M', long = "data-mime")]
     data_mime: Option<String>,
 
@@ -86,6 +86,22 @@ struct Cli {
     #[arg(long = "debug-ocr")]
     debug_ocr: bool,
 
+    /// Overwrite input files in place (backups stored in ~/.llm-translated-rust/backup)
+    #[arg(long = "overwrite", requires = "data")]
+    overwrite: bool,
+
+    /// Directory translation threads (overrides settings)
+    #[arg(long = "directory-translation-threads")]
+    directory_translation_threads: Option<usize>,
+
+    /// Ignore translation patterns (gitignore-like). Can be used multiple times.
+    #[arg(long = "ignore-translation-file", action = clap::ArgAction::Append)]
+    ignore_translation_file: Vec<String>,
+
+    /// Output path for translated file or directory
+    #[arg(short = 'o', long = "out")]
+    out: Option<String>,
+
     /// Enable verbose logging
     #[arg(long = "verbose")]
     verbose: bool,
@@ -101,6 +117,12 @@ struct Cli {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        std::env::set_var("OS_ACTIVITY_MODE", "disable");
+        std::env::set_var("OS_ACTIVITY_DT_MODE", "0");
+    }
+
     let cli = Cli::parse();
     llm_translator_rust::logging::init(cli.verbose)?;
     if cli.interactive {
@@ -182,6 +204,9 @@ async fn main() -> Result<()> {
             data: cli.data,
             data_mime: cli.data_mime,
             data_attachment: stdin_attachment,
+            directory_translation_threads: cli.directory_translation_threads,
+            ignore_translation_files: cli.ignore_translation_file,
+            out_path: cli.out,
             settings_path: cli.read_settings,
             show_enabled_languages: cli.show_enabled_languages,
             show_enabled_styles: cli.show_enabled_styles,
@@ -193,6 +218,7 @@ async fn main() -> Result<()> {
             with_using_model: cli.with_using_model,
             with_commentout: cli.with_commentout,
             debug_ocr: cli.debug_ocr,
+            overwrite: cli.overwrite,
             verbose: cli.verbose,
             whisper_model: cli.whisper_model,
         },
@@ -221,6 +247,9 @@ impl InteractiveState {
                 data: cli.data.clone(),
                 data_mime: cli.data_mime.clone(),
                 data_attachment: None,
+                directory_translation_threads: cli.directory_translation_threads,
+                ignore_translation_files: cli.ignore_translation_file.clone(),
+                out_path: cli.out.clone(),
                 settings_path: cli.read_settings.clone(),
                 show_enabled_languages: false,
                 show_enabled_styles: false,
@@ -232,6 +261,7 @@ impl InteractiveState {
                 with_using_model: cli.with_using_model,
                 with_commentout: cli.with_commentout,
                 debug_ocr: cli.debug_ocr,
+                overwrite: cli.overwrite,
                 verbose: cli.verbose,
                 whisper_model: cli.whisper_model.clone(),
             },
@@ -498,7 +528,149 @@ fn print_interactive_help() {
     println!("  /with-using-model [on|off]   Toggle model suffix output");
     println!("  /with-using-tokens [on|off]  Toggle token usage output");
     println!("  /with-commentout [on|off]    Toggle comment translation");
-    println!("  /data <path|clear>           Set attachment file");
+    println!("  /data <path|clear>           Set attachment file or directory");
     println!("  /data-mime <mime|clear>      Set attachment mime");
     println!("  /key <api-key>               Set API key");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Cli;
+    use clap::Parser;
+
+    #[test]
+    fn cli_defaults() {
+        let cli = Cli::parse_from(["llm-translator-rust"]);
+        assert_eq!(cli.lang, "en");
+        assert_eq!(cli.formal, "formal");
+        assert_eq!(cli.source_lang, "auto");
+        assert!(!cli.slang);
+        assert!(cli.model.is_none());
+        assert!(cli.key.is_none());
+        assert!(cli.data.is_none());
+        assert!(cli.data_mime.is_none());
+        assert!(!cli.show_enabled_languages);
+        assert!(!cli.show_enabled_styles);
+        assert!(!cli.show_models_list);
+        assert!(!cli.show_whisper_models);
+        assert!(!cli.pos);
+        assert!(!cli.show_histories);
+        assert!(!cli.with_using_tokens);
+        assert!(!cli.with_using_model);
+        assert!(cli.read_settings.is_none());
+        assert!(!cli.with_commentout);
+        assert!(!cli.debug_ocr);
+        assert!(!cli.overwrite);
+        assert!(cli.directory_translation_threads.is_none());
+        assert!(cli.ignore_translation_file.is_empty());
+        assert!(cli.out.is_none());
+        assert!(!cli.verbose);
+        assert!(!cli.interactive);
+        assert!(cli.whisper_model.is_none());
+    }
+
+    #[test]
+    fn cli_parse_all_flags() {
+        let cli = Cli::parse_from([
+            "llm-translator-rust",
+            "-l",
+            "ja",
+            "-m",
+            "openai:gpt-4o",
+            "-k",
+            "test-key",
+            "-f",
+            "casual",
+            "-L",
+            "en",
+            "-s",
+            "-d",
+            "input.xml",
+            "-M",
+            "xml",
+            "--show-enabled-languages",
+            "--show-enabled-styles",
+            "--show-models-list",
+            "--show-whisper-models",
+            "--pos",
+            "--show-histories",
+            "--with-using-tokens",
+            "--with-using-model",
+            "-r",
+            "custom.toml",
+            "--with-commentout",
+            "--debug-ocr",
+            "--overwrite",
+            "--directory-translation-threads",
+            "5",
+            "--ignore-translation-file",
+            "node_modules/**",
+            "--ignore-translation-file",
+            "!node_modules/keep.txt",
+            "--out",
+            "outdir",
+            "--verbose",
+            "-i",
+            "--whisper-model",
+            "base",
+        ]);
+        assert_eq!(cli.lang, "ja");
+        assert_eq!(cli.model.as_deref(), Some("openai:gpt-4o"));
+        assert_eq!(cli.key.as_deref(), Some("test-key"));
+        assert_eq!(cli.formal, "casual");
+        assert_eq!(cli.source_lang, "en");
+        assert!(cli.slang);
+        assert_eq!(cli.data.as_deref(), Some("input.xml"));
+        assert_eq!(cli.data_mime.as_deref(), Some("xml"));
+        assert!(cli.show_enabled_languages);
+        assert!(cli.show_enabled_styles);
+        assert!(cli.show_models_list);
+        assert!(cli.show_whisper_models);
+        assert!(cli.pos);
+        assert!(cli.show_histories);
+        assert!(cli.with_using_tokens);
+        assert!(cli.with_using_model);
+        assert_eq!(cli.read_settings.as_deref(), Some("custom.toml"));
+        assert!(cli.with_commentout);
+        assert!(cli.debug_ocr);
+        assert!(cli.overwrite);
+        assert_eq!(cli.directory_translation_threads, Some(5));
+        assert_eq!(cli.ignore_translation_file.len(), 2);
+        assert_eq!(cli.ignore_translation_file[0], "node_modules/**");
+        assert_eq!(cli.ignore_translation_file[1], "!node_modules/keep.txt");
+        assert_eq!(cli.out.as_deref(), Some("outdir"));
+        assert!(cli.verbose);
+        assert!(cli.interactive);
+        assert_eq!(cli.whisper_model.as_deref(), Some("base"));
+    }
+
+    #[test]
+    fn cli_parse_mixed_flags() {
+        let cli = Cli::parse_from([
+            "llm-translator-rust",
+            "-d",
+            "fixtures/sample.md",
+            "-M",
+            "md",
+            "--overwrite",
+            "--with-commentout",
+            "--debug-ocr",
+            "--slang",
+            "--with-using-model",
+        ]);
+        assert_eq!(cli.data.as_deref(), Some("fixtures/sample.md"));
+        assert_eq!(cli.data_mime.as_deref(), Some("md"));
+        assert!(cli.overwrite);
+        assert!(cli.with_commentout);
+        assert!(cli.debug_ocr);
+        assert!(cli.slang);
+        assert!(cli.with_using_model);
+    }
+
+    #[test]
+    fn cli_overwrite_requires_data() {
+        let err = Cli::try_parse_from(["llm-translator-rust", "--overwrite"]).unwrap_err();
+        let message = err.to_string();
+        assert!(message.contains("requires") || message.contains("data"));
+    }
 }

@@ -1,18 +1,157 @@
-FROM ghcr.io/cross-rs/aarch64-unknown-linux-gnu:latest
+ARG CROSS_BASE_IMAGE=ghcr.io/cross-rs/aarch64-unknown-linux-gnu:latest
+FROM --platform=linux/amd64 ${CROSS_BASE_IMAGE}
 
-RUN apt-get update && \
+ARG LLVM_VERSION=12
+
+# Use clang for cross-compiling whisper.cpp to get newer arm_neon.h intrinsics.
+ENV AARCH64_SYSROOT=/usr/aarch64-linux-gnu
+ENV CC=/usr/local/bin/aarch64-linux-gnu-clang
+ENV CXX=/usr/local/bin/aarch64-linux-gnu-clang++
+ENV AR=llvm-ar
+ENV RANLIB=llvm-ranlib
+ENV CC_aarch64_unknown_linux_gnu=/usr/local/bin/aarch64-linux-gnu-clang
+ENV CXX_aarch64_unknown_linux_gnu=/usr/local/bin/aarch64-linux-gnu-clang++
+ENV AR_aarch64_unknown_linux_gnu=llvm-ar
+ENV RANLIB_aarch64_unknown_linux_gnu=llvm-ranlib
+ENV CFLAGS_aarch64_unknown_linux_gnu="--target=aarch64-unknown-linux-gnu --sysroot=${AARCH64_SYSROOT} --gcc-toolchain=/usr -fuse-ld=lld"
+ENV CXXFLAGS_aarch64_unknown_linux_gnu="--target=aarch64-unknown-linux-gnu --sysroot=${AARCH64_SYSROOT} --gcc-toolchain=/usr -fuse-ld=lld"
+ENV LDFLAGS_aarch64_unknown_linux_gnu="-fuse-ld=lld"
+ENV BINDGEN_EXTRA_CLANG_ARGS_aarch64-unknown-linux-gnu="--sysroot=${AARCH64_SYSROOT}"
+ENV BINDGEN_EXTRA_CLANG_ARGS_aarch64_unknown_linux_gnu="--sysroot=${AARCH64_SYSROOT}"
+
+# Install a modern libclang for bindgen (whisper-rs-sys requires newer than 3.8).
+RUN set -eux; \
+    if [ -f /etc/apt/sources.list ]; then \
+      sed -i 's|https://|http://|g' /etc/apt/sources.list; \
+    fi; \
+    if ls /etc/apt/sources.list.d/*.list >/dev/null 2>&1; then \
+      sed -i 's|https://|http://|g' /etc/apt/sources.list.d/*.list; \
+    fi; \
+    if ls /etc/apt/sources.list.d/*.sources >/dev/null 2>&1; then \
+      sed -i 's|https://|http://|g' /etc/apt/sources.list.d/*.sources; \
+    fi; \
+    . /etc/os-release; \
+    distro_id="${ID:-}"; \
+    codename="${VERSION_CODENAME:-${UBUNTU_CODENAME:-}}"; \
+    if [ -z "$codename" ] && command -v lsb_release >/dev/null 2>&1; then \
+      codename="$(lsb_release -cs || true)"; \
+    fi; \
+    if [ -n "$distro_id" ] && [ -n "$codename" ]; then \
+      rm -f /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources || true; \
+      if [ "$distro_id" = "debian" ]; then \
+        printf '%s\n' \
+          "deb http://deb.debian.org/debian ${codename} main" \
+          "deb http://deb.debian.org/debian ${codename}-updates main" \
+          "deb http://security.debian.org/debian-security ${codename}-security main" \
+          > /etc/apt/sources.list; \
+      elif [ "$distro_id" = "ubuntu" ]; then \
+        printf '%s\n' \
+          "deb http://archive.ubuntu.com/ubuntu ${codename} main universe multiverse" \
+          "deb http://archive.ubuntu.com/ubuntu ${codename}-updates main universe multiverse" \
+          "deb http://security.ubuntu.com/ubuntu ${codename}-security main universe multiverse" \
+          > /etc/apt/sources.list; \
+      fi; \
+    fi; \
+    apt-get update; \
     apt-get install -y --no-install-recommends \
+      apt-transport-https \
+      ca-certificates \
+      curl \
+      gnupg \
       build-essential \
-      clang \
-      llvm \
-      llvm-dev \
-      libclang-dev \
       pkg-config \
       gcc-aarch64-linux-gnu \
-      libc6-dev-arm64-cross && \
-    rm -rf /var/lib/apt/lists/*
-
-# Make libclang discoverable for clang-sys in the container.
-RUN libdir="$(llvm-config --libdir)" && \
+      g++-aarch64-linux-gnu \
+      libc6-dev-arm64-cross; \
+    if ! dpkg -s libstdc++-5-dev-arm64-cross >/dev/null 2>&1; then \
+      if apt-get install -y --no-install-recommends libstdc++-5-dev-arm64-cross; then \
+        true; \
+      elif apt-get install -y --no-install-recommends libstdc++-6-dev-arm64-cross; then \
+        true; \
+      else \
+        apt-get install -y --no-install-recommends libstdc++-dev-arm64-cross; \
+      fi; \
+    fi; \
+    if [ -d /usr/aarch64-linux-gnu/include/c++/5 ]; then \
+      mkdir -p /usr/include/c++; \
+      if [ ! -e /usr/include/c++/5.4.0 ]; then \
+        ln -s /usr/aarch64-linux-gnu/include/c++/5 /usr/include/c++/5.4.0; \
+      fi; \
+      if [ ! -e /usr/include/c++/5 ]; then \
+        ln -s /usr/aarch64-linux-gnu/include/c++/5 /usr/include/c++/5; \
+      fi; \
+    fi; \
+    if [ -d /usr/lib/gcc-cross/aarch64-linux-gnu ] && [ ! -e /usr/lib/gcc/aarch64-linux-gnu ]; then \
+      mkdir -p /usr/lib/gcc; \
+      ln -s /usr/lib/gcc-cross/aarch64-linux-gnu /usr/lib/gcc/aarch64-linux-gnu; \
+    fi; \
+    if [ -z "$codename" ]; then echo "unable to detect distro codename"; exit 1; fi; \
+    curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key | gpg --dearmor -o /usr/share/keyrings/llvm.gpg; \
+    echo "deb [signed-by=/usr/share/keyrings/llvm.gpg] http://apt.llvm.org/${codename}/ llvm-toolchain-${codename}-${LLVM_VERSION} main" \
+      > /etc/apt/sources.list.d/llvm.list; \
+    apt-get update; \
+    installed_llvm_version=""; \
+    if apt-get install -y --no-install-recommends \
+        clang-${LLVM_VERSION} \
+        lld-${LLVM_VERSION} \
+        llvm-${LLVM_VERSION} \
+        llvm-${LLVM_VERSION}-dev \
+        libclang-${LLVM_VERSION}-dev; then \
+      installed_llvm_version="${LLVM_VERSION}"; \
+    else \
+      for v in 12 11 10 9 8 7 6 5 4 3.9; do \
+        if apt-get install -y --no-install-recommends \
+            clang-${v} \
+            lld-${v} \
+            llvm-${v} \
+            llvm-${v}-dev \
+            libclang-${v}-dev; then \
+          installed_llvm_version="${v}"; \
+          break; \
+        fi; \
+      done; \
+    fi; \
+    if [ -z "$installed_llvm_version" ]; then \
+      apt-get install -y --no-install-recommends \
+        clang \
+        lld \
+        llvm \
+        llvm-dev \
+        libclang-dev; \
+    fi; \
+    if [ -n "$installed_llvm_version" ]; then \
+      for bin in clang clang++ llvm-ar llvm-ranlib llvm-config lld ld.lld; do \
+        if [ -x "/usr/bin/${bin}-${installed_llvm_version}" ]; then \
+          ln -sf "/usr/bin/${bin}-${installed_llvm_version}" "/usr/local/bin/${bin}"; \
+        fi; \
+      done; \
+    fi; \
+    printf '%s\n' \
+      '#!/bin/sh' \
+      'exec /usr/local/bin/clang --target=aarch64-unknown-linux-gnu --sysroot=/usr/aarch64-linux-gnu --gcc-toolchain=/usr -fuse-ld=lld "$@"' \
+      > /usr/local/bin/aarch64-linux-gnu-clang; \
+    chmod +x /usr/local/bin/aarch64-linux-gnu-clang; \
+    printf '%s\n' \
+      '#!/bin/sh' \
+      'set -e' \
+      'cxx_root="/usr/aarch64-linux-gnu/include/c++"' \
+      'extra_args=""' \
+      'if [ -d "$cxx_root" ]; then' \
+      '  version="$(ls "$cxx_root" | sort -V | tail -n1)"' \
+      '  if [ -n "$version" ]; then' \
+      '    extra_args="-isystem $cxx_root/$version -isystem $cxx_root/$version/aarch64-linux-gnu"' \
+      '  fi' \
+      'fi' \
+      'exec /usr/local/bin/clang++ --target=aarch64-unknown-linux-gnu --sysroot=/usr/aarch64-linux-gnu --gcc-toolchain=/usr -fuse-ld=lld $extra_args "$@"' \
+      > /usr/local/bin/aarch64-linux-gnu-clang++; \
+    chmod +x /usr/local/bin/aarch64-linux-gnu-clang++; \
+    rm -rf /var/lib/apt/lists/*; \
+    if command -v llvm-config >/dev/null 2>&1; then \
+      libdir="$(llvm-config --libdir)"; \
+    elif [ -n "$installed_llvm_version" ] && command -v llvm-config-${installed_llvm_version} >/dev/null 2>&1; then \
+      libdir="$(llvm-config-${installed_llvm_version} --libdir)"; \
+    else \
+      libdir="/usr/lib"; \
+    fi; \
     ln -sf "${libdir}/libclang.so" /usr/lib/libclang.so || \
     ln -sf "${libdir}/libclang.so.1" /usr/lib/libclang.so

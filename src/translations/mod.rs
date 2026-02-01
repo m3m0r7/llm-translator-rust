@@ -117,6 +117,14 @@ pub fn render_system_prompt_with_data(
     Tera::one_off(&template, &context, false).with_context(|| "failed to render system prompt")
 }
 
+pub fn render_ocr_normalize_prompt(source_lang: &str, tool_name: &str) -> Result<String> {
+    render_simple_prompt("ocr_normalize_prompt.tera", source_lang, tool_name)
+}
+
+pub fn render_ocr_romanize_prompt(source_lang: &str, tool_name: &str) -> Result<String> {
+    render_simple_prompt("ocr_romanize_prompt.tera", source_lang, tool_name)
+}
+
 pub fn parse_tool_args(
     value: Value,
     options: &TranslateOptions,
@@ -139,6 +147,15 @@ pub fn parse_tool_args(
 fn load_prompt_template(name: &str) -> Result<String> {
     let path = prompt_path(name)?;
     fs::read_to_string(&path).with_context(|| format!("failed to read prompt: {}", path.display()))
+}
+
+fn render_simple_prompt(name: &str, source_lang: &str, tool_name: &str) -> Result<String> {
+    let template = load_prompt_template(name)?;
+    let mut context = TeraContext::new();
+    context.insert("source_lang", source_lang);
+    context.insert("tool_name", tool_name);
+    Tera::one_off(&template, &context, false)
+        .with_context(|| format!("failed to render prompt {}", name))
 }
 
 fn prompt_path(name: &str) -> Result<PathBuf> {

@@ -4,6 +4,10 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
+mod tools;
+
+pub use tools::{map_lang_for_espeak, map_lang_for_whisper};
+
 #[derive(Debug, Clone)]
 pub struct LanguageRegistry {
     codes: HashMap<String, String>,

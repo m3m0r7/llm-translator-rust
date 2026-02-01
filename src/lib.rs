@@ -1,10 +1,14 @@
 use anyhow::{anyhow, Context, Result};
+use futures_util::stream::{self, StreamExt};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::sync::Mutex;
 use tracing::{info, warn};
 
 pub mod attachments;
+mod backup;
 pub mod data;
 pub mod dictionary;
 pub mod languages;
@@ -13,12 +17,17 @@ mod model_registry;
 pub mod ocr;
 mod providers;
 pub mod settings;
+mod translation_ignore;
 pub mod translations;
 mod translator;
 
 pub use providers::{Claude, Gemini, OpenAI, Provider, ProviderKind, ProviderUsage};
+use translation_ignore::TranslationIgnore;
 pub use translations::TranslateOptions;
 pub use translator::{ExecutionOutput, TranslationInput, Translator};
+
+#[cfg(test)]
+mod test_util;
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -31,6 +40,10 @@ pub struct Config {
     pub data: Option<String>,
     pub data_mime: Option<String>,
     pub data_attachment: Option<data::DataAttachment>,
+    pub directory_translation_threads: Option<usize>,
+    pub ignore_translation_files: Vec<String>,
+    pub out_path: Option<String>,
+    pub overwrite: bool,
     pub settings_path: Option<String>,
     pub show_enabled_languages: bool,
     pub show_enabled_styles: bool,
@@ -80,23 +93,41 @@ pub async fn run(config: Config, input: Option<String>) -> Result<String> {
         return Err(anyhow!("--data-mime requires --data or stdin"));
     }
 
-    let data_attachment = if let Some(attachment) = config.data_attachment.take() {
+    let data_path = config.data.as_deref().map(Path::new);
+    let data_is_dir = if let Some(path) = data_path {
+        let metadata = fs::metadata(path)
+            .with_context(|| format!("failed to read --data path: {}", path.display()))?;
+        metadata.is_dir()
+    } else {
+        false
+    };
+    if config.overwrite && config.data.is_none() {
+        return Err(anyhow!("--overwrite requires --data path"));
+    }
+    if config.overwrite && config.out_path.is_some() {
+        return Err(anyhow!("--out cannot be used with --overwrite"));
+    }
+
+    let data_attachment = if data_is_dir {
+        None
+    } else if let Some(attachment) = config.data_attachment.take() {
         Some(attachment)
-    } else if let Some(path) = config.data.as_deref() {
-        info!("loading attachment: {}", path);
-        Some(data::load_attachment(
-            Path::new(path),
-            config.data_mime.as_deref(),
-        )?)
+    } else if let Some(path) = data_path {
+        info!("loading attachment: {}", path.display());
+        Some(data::load_attachment(path, config.data_mime.as_deref())?)
     } else {
         None
     };
     let attachment_mime = data_attachment.as_ref().map(|data| data.mime.clone());
     let history_src = config.data.clone();
 
+    if config.out_path.is_some() && !data_is_dir && data_attachment.is_none() {
+        return Err(anyhow!("--out requires --data or stdin attachment"));
+    }
+
     let input = input.unwrap_or_default();
     let input = input.trim();
-    if input.is_empty() && data_attachment.is_none() {
+    if input.is_empty() && data_attachment.is_none() && !data_is_dir {
         return Err(anyhow!("stdin is empty"));
     }
     let formality = config.formal.trim().to_string();
@@ -107,6 +138,14 @@ pub async fn run(config: Config, input: Option<String>) -> Result<String> {
     let with_using_tokens = config.with_using_tokens;
     let input_text = input.to_string();
     let history_limit = settings.history_limit;
+    let translated_suffix = settings.translated_suffix.clone();
+    let backup_ttl_days = settings.backup_ttl_days;
+    let translation_ignore_file = settings.translation_ignore_file.clone();
+    let directory_threads = config
+        .directory_translation_threads
+        .unwrap_or(settings.directory_translation_threads)
+        .max(1);
+    let out_path = config.out_path.as_ref().map(PathBuf::from);
 
     let selection = if let Some(model_arg) = config.model.as_deref() {
         info!("model requested: {}", model_arg);
@@ -161,7 +200,7 @@ pub async fn run(config: Config, input: Option<String>) -> Result<String> {
     };
 
     if config.pos {
-        if data_attachment.is_some() {
+        if data_attachment.is_some() || data_is_dir {
             return Err(anyhow!("--pos only supports text input"));
         }
         info!("running dictionary mode");
@@ -171,6 +210,49 @@ pub async fn run(config: Config, input: Option<String>) -> Result<String> {
             with_using_model,
             with_using_tokens,
         ));
+    }
+
+    if data_is_dir {
+        let src_dir = data_path.ok_or_else(|| anyhow!("--data directory not found"))?;
+        if let Some(out) = out_path.as_ref() {
+            if out.exists() && out.is_file() {
+                return Err(anyhow!(
+                    "--out must be a directory when --data is a directory"
+                ));
+            }
+            if let (Ok(src_abs), Ok(out_abs)) =
+                (std::fs::canonicalize(src_dir), std::fs::canonicalize(out))
+            {
+                if src_abs == out_abs {
+                    return Err(anyhow!(
+                        "--out must be different from the source directory (use --overwrite to write in place)"
+                    ));
+                }
+            }
+        }
+        let ignore = build_translation_ignore(
+            src_dir,
+            translation_ignore_file.as_str(),
+            &config.ignore_translation_files,
+        )?;
+        let dir_config = DirTranslateConfig {
+            mime_hint: config.data_mime.clone(),
+            ocr_languages: ocr_languages.clone(),
+            options: options.clone(),
+            with_commentout: config.with_commentout,
+            debug_ocr: config.debug_ocr,
+            overwrite: config.overwrite,
+            translated_suffix,
+            backup_ttl_days,
+            provider: selection.provider,
+            history_model,
+            history_limit,
+            directory_threads,
+            ignore,
+            output_dir: out_path.clone(),
+        };
+        let output = translate_data_dir(src_dir, &translator, dir_config).await?;
+        return Ok(output);
     }
 
     if let Some(data) = data_attachment.as_ref() {
@@ -192,8 +274,26 @@ pub async fn run(config: Config, input: Option<String>) -> Result<String> {
                 .as_secs()
                 .to_string();
             let dest_path = model_registry::write_history_dest_bytes(&output.bytes, &datetime)?;
-            let output_path = if let Some(src_path) = history_src.as_deref() {
-                let translated = translated_output_path(Path::new(src_path), &output.mime)?;
+            let output_path = if let Some(out) = out_path.as_ref() {
+                let src_path = history_src.as_deref().map(Path::new);
+                let data_name = data.name.as_deref();
+                let output_path = resolve_out_path(out, src_path, data_name, &output.mime)?;
+                if let Some(parent) = output_path.parent() {
+                    fs::create_dir_all(parent).with_context(|| {
+                        format!("failed to create output dir: {}", parent.display())
+                    })?;
+                }
+                fs::write(&output_path, &output.bytes)
+                    .with_context(|| "failed to write translated file")?;
+                output_path
+            } else if let Some(src_path) = history_src.as_deref() {
+                let src_path = Path::new(src_path);
+                let translated = if config.overwrite {
+                    backup::backup_file(src_path, backup_ttl_days)?;
+                    src_path.to_path_buf()
+                } else {
+                    translated_output_path(src_path, &output.mime, &translated_suffix)?
+                };
                 fs::write(&translated, &output.bytes)
                     .with_context(|| "failed to write translated file")?;
                 translated
@@ -264,7 +364,7 @@ pub async fn run(config: Config, input: Option<String>) -> Result<String> {
     Ok(output)
 }
 
-fn translated_output_path(src: &Path, mime: &str) -> Result<PathBuf> {
+fn translated_output_path(src: &Path, mime: &str, suffix: &str) -> Result<PathBuf> {
     let ext = data::extension_from_mime(mime)
         .ok_or_else(|| anyhow!("unsupported output mime '{}'", mime))?;
     let parent = src.parent().unwrap_or_else(|| Path::new("."));
@@ -272,8 +372,462 @@ fn translated_output_path(src: &Path, mime: &str) -> Result<PathBuf> {
         .file_stem()
         .and_then(|value| value.to_str())
         .unwrap_or("translated");
-    let filename = format!("{}_translated.{}", stem, ext);
+    let filename = if suffix.is_empty() {
+        format!("{}.{}", stem, ext)
+    } else {
+        format!("{}{}.{}", stem, suffix, ext)
+    };
     Ok(parent.join(filename))
+}
+
+fn translated_output_dir(src: &Path, suffix: &str) -> PathBuf {
+    let parent = src.parent().unwrap_or_else(|| Path::new("."));
+    let base = src
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("translated");
+    if suffix.is_empty() {
+        parent.join(base)
+    } else {
+        parent.join(format!("{}{}", base, suffix))
+    }
+}
+
+fn translated_output_path_in_dir(
+    src_root: &Path,
+    dest_root: &Path,
+    src_file: &Path,
+    input_mime: &str,
+    output_mime: &str,
+) -> Result<PathBuf> {
+    let rel = src_file
+        .strip_prefix(src_root)
+        .with_context(|| "failed to resolve relative path")?;
+    let mut dest = dest_root.join(rel);
+    if output_mime != input_mime {
+        if let Some(ext) = data::extension_from_mime(output_mime) {
+            dest.set_extension(ext);
+        }
+    }
+    Ok(dest)
+}
+
+fn copy_output_path_in_dir(src_root: &Path, dest_root: &Path, src_file: &Path) -> Result<PathBuf> {
+    let rel = src_file
+        .strip_prefix(src_root)
+        .with_context(|| "failed to resolve relative path")?;
+    Ok(dest_root.join(rel))
+}
+
+fn resolve_out_path(
+    out: &Path,
+    src_path: Option<&Path>,
+    data_name: Option<&str>,
+    output_mime: &str,
+) -> Result<PathBuf> {
+    if out.exists() && out.is_dir() {
+        let base = src_path
+            .and_then(|value| value.file_stem().and_then(|stem| stem.to_str()))
+            .or_else(|| data_name.and_then(|value| Path::new(value).file_stem()?.to_str()))
+            .unwrap_or("translated");
+        let ext = data::extension_from_mime(output_mime)
+            .ok_or_else(|| anyhow!("unsupported output mime '{}'", output_mime))?;
+        return Ok(out.join(format!("{}.{}", base, ext)));
+    }
+    Ok(out.to_path_buf())
+}
+
+fn collect_directory_files(root: &Path) -> Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries = fs::read_dir(&dir)
+            .with_context(|| format!("failed to read directory: {}", dir.display()))?;
+        for entry in entries {
+            let entry = entry.with_context(|| "failed to read directory entry")?;
+            let path = entry.path();
+            let file_type = entry
+                .file_type()
+                .with_context(|| "failed to read file type")?;
+            if file_type.is_dir() {
+                stack.push(path);
+            } else if file_type.is_file() {
+                files.push(path);
+            }
+        }
+    }
+    files.sort();
+    Ok(files)
+}
+
+fn build_translation_ignore(
+    src_dir: &Path,
+    ignore_file_name: &str,
+    cli_patterns: &[String],
+) -> Result<Option<TranslationIgnore>> {
+    let mut patterns = Vec::new();
+    let name = ignore_file_name.trim();
+    if !name.is_empty() {
+        let ignore_path = Path::new(name);
+        let path = if ignore_path.is_absolute() {
+            ignore_path.to_path_buf()
+        } else {
+            src_dir.join(name)
+        };
+        if path.exists() {
+            let content = fs::read_to_string(&path)
+                .with_context(|| format!("failed to read ignore file: {}", path.display()))?;
+            for line in content.lines() {
+                patterns.push(line.to_string());
+            }
+        }
+    }
+    patterns.extend(cli_patterns.iter().cloned());
+
+    TranslationIgnore::new(src_dir, patterns)
+}
+
+struct DirTranslateConfig {
+    mime_hint: Option<String>,
+    ocr_languages: String,
+    options: TranslateOptions,
+    with_commentout: bool,
+    debug_ocr: bool,
+    overwrite: bool,
+    translated_suffix: String,
+    backup_ttl_days: u64,
+    provider: ProviderKind,
+    history_model: String,
+    history_limit: usize,
+    directory_threads: usize,
+    ignore: Option<TranslationIgnore>,
+    output_dir: Option<PathBuf>,
+}
+
+#[derive(Clone)]
+struct DirTranslateShared {
+    src_dir: PathBuf,
+    output_dir: Option<PathBuf>,
+    mime_hint: Option<String>,
+    ocr_languages: String,
+    options: TranslateOptions,
+    with_commentout: bool,
+    debug_ocr: bool,
+    overwrite: bool,
+    backup_ttl_days: u64,
+    provider: ProviderKind,
+    history_model: String,
+    history_limit: usize,
+    ignore: Option<TranslationIgnore>,
+    meta_lock: Arc<Mutex<()>>,
+}
+
+enum DirItemStatus {
+    Translated,
+    Copied,
+    Skipped,
+    Failed,
+}
+
+struct DirItemResult {
+    status: DirItemStatus,
+    message: Option<String>,
+}
+
+async fn translate_data_dir<P: Provider + Clone>(
+    src_dir: &Path,
+    translator: &Translator<P>,
+    config: DirTranslateConfig,
+) -> Result<String> {
+    let output_dir = if config.overwrite {
+        None
+    } else if let Some(out) = config.output_dir.as_ref() {
+        Some(out.clone())
+    } else {
+        Some(translated_output_dir(
+            src_dir,
+            config.translated_suffix.as_str(),
+        ))
+    };
+    if let Some(dir) = output_dir.as_ref() {
+        fs::create_dir_all(dir)
+            .with_context(|| format!("failed to create output dir: {}", dir.display()))?;
+    }
+
+    let files = collect_directory_files(src_dir)?;
+    if files.is_empty() {
+        let message = if let Some(dir) = output_dir.as_ref() {
+            let output_dir = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+            format!(
+                "No files found in {} (output dir: {})",
+                src_dir.display(),
+                output_dir.display()
+            )
+        } else {
+            format!("No files found in {}", src_dir.display())
+        };
+        return Ok(message);
+    }
+
+    let shared = Arc::new(DirTranslateShared {
+        src_dir: src_dir.to_path_buf(),
+        output_dir,
+        mime_hint: config.mime_hint,
+        ocr_languages: config.ocr_languages,
+        options: config.options,
+        with_commentout: config.with_commentout,
+        debug_ocr: config.debug_ocr,
+        overwrite: config.overwrite,
+        backup_ttl_days: config.backup_ttl_days,
+        provider: config.provider,
+        history_model: config.history_model,
+        history_limit: config.history_limit,
+        ignore: config.ignore,
+        meta_lock: Arc::new(Mutex::new(())),
+    });
+
+    let concurrency = config.directory_threads.max(1);
+    let results: Vec<DirItemResult> = stream::iter(files)
+        .map(|path| {
+            let translator = translator.clone();
+            let shared = shared.clone();
+            async move { process_dir_file(path, translator, shared).await }
+        })
+        .buffer_unordered(concurrency)
+        .collect()
+        .await;
+
+    let mut translated = 0usize;
+    let mut copied = 0usize;
+    let mut skipped = 0usize;
+    let mut failed = 0usize;
+    let mut failures: Vec<String> = Vec::new();
+
+    for result in results {
+        match result.status {
+            DirItemStatus::Translated => translated += 1,
+            DirItemStatus::Copied => copied += 1,
+            DirItemStatus::Skipped => skipped += 1,
+            DirItemStatus::Failed => failed += 1,
+        }
+        if let Some(message) = result.message {
+            failures.push(message);
+        }
+    }
+
+    let mut lines = Vec::new();
+    if let Some(dir) = shared.output_dir.as_ref() {
+        let output_dir = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+        lines.push(format!("Translated directory: {}", output_dir.display()));
+    } else {
+        lines.push(format!("Overwrote directory: {}", src_dir.display()));
+        let backup_dir = backup::backup_dir();
+        lines.push(format!("backup dir: {}", backup_dir.display()));
+    }
+    lines.push(format!(
+        "files: {} translated, {} copied, {} skipped, {} failed (total {})",
+        translated,
+        copied,
+        skipped,
+        failed,
+        translated + copied + skipped + failed
+    ));
+    if !failures.is_empty() {
+        lines.push("failures:".to_string());
+        let limit = 20usize;
+        for message in failures.iter().take(limit) {
+            lines.push(format!("- {}", message));
+        }
+        if failures.len() > limit {
+            lines.push(format!("... and {} more", failures.len() - limit));
+        }
+    }
+
+    Ok(lines.join("\n"))
+}
+
+async fn process_dir_file<P: Provider + Clone>(
+    path: PathBuf,
+    translator: Translator<P>,
+    shared: Arc<DirTranslateShared>,
+) -> DirItemResult {
+    if let Some(ignore) = &shared.ignore {
+        if ignore.is_ignored(&path) {
+            return copy_or_skip(&path, &shared, None);
+        }
+    }
+
+    let attachment = match data::load_attachment(&path, shared.mime_hint.as_deref()) {
+        Ok(value) => value,
+        Err(err) => return copy_or_skip(&path, &shared, Some(err)),
+    };
+
+    let debug_src = if shared.debug_ocr {
+        Some(path.as_path())
+    } else {
+        None
+    };
+    let output = attachments::translate_attachment(
+        &attachment,
+        &shared.ocr_languages,
+        &translator,
+        &shared.options,
+        shared.with_commentout,
+        shared.debug_ocr,
+        debug_src,
+    )
+    .await;
+    let output = match output {
+        Ok(value) => value,
+        Err(err) => return copy_or_skip(&path, &shared, Some(err)),
+    };
+    let output = match output {
+        Some(value) => value,
+        None => return copy_or_skip(&path, &shared, None),
+    };
+
+    let output_path = if shared.overwrite {
+        let guard = shared.meta_lock.lock().await;
+        if let Err(err) = backup::backup_file(&path, shared.backup_ttl_days) {
+            drop(guard);
+            return copy_or_skip(&path, &shared, Some(anyhow!("backup failed: {}", err)));
+        }
+        drop(guard);
+        path.clone()
+    } else {
+        let Some(dest_root) = shared.output_dir.as_ref() else {
+            return DirItemResult {
+                status: DirItemStatus::Failed,
+                message: Some(format!("{}: output dir missing", path.display())),
+            };
+        };
+        match translated_output_path_in_dir(
+            &shared.src_dir,
+            dest_root,
+            &path,
+            &attachment.mime,
+            &output.mime,
+        ) {
+            Ok(value) => value,
+            Err(err) => {
+                return DirItemResult {
+                    status: DirItemStatus::Failed,
+                    message: Some(format!("{}: {}", path.display(), err)),
+                }
+            }
+        }
+    };
+    if let Some(parent) = output_path.parent() {
+        if let Err(err) = fs::create_dir_all(parent) {
+            return DirItemResult {
+                status: DirItemStatus::Failed,
+                message: Some(format!(
+                    "{}: failed to create output dir: {}",
+                    path.display(),
+                    err
+                )),
+            };
+        }
+    }
+    if let Err(err) = fs::write(&output_path, &output.bytes) {
+        return DirItemResult {
+            status: DirItemStatus::Failed,
+            message: Some(format!(
+                "{}: failed to write output: {}",
+                path.display(),
+                err
+            )),
+        };
+    }
+
+    let datetime = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+        .to_string();
+    match model_registry::write_history_dest_bytes(&output.bytes, &datetime) {
+        Ok(dest_path) => {
+            let entry = model_registry::HistoryEntry {
+                datetime,
+                model: format!("{}:{}", shared.provider.as_str(), shared.history_model),
+                mime: output.mime.clone(),
+                kind: model_registry::HistoryType::Attachment,
+                src: path.to_string_lossy().to_string(),
+                dest: dest_path,
+            };
+            let guard = shared.meta_lock.lock().await;
+            if let Err(err) = model_registry::record_history(entry, shared.history_limit) {
+                warn!("failed to record history: {}", err);
+            }
+            drop(guard);
+        }
+        Err(err) => {
+            warn!("failed to write history output: {}", err);
+        }
+    }
+
+    DirItemResult {
+        status: DirItemStatus::Translated,
+        message: None,
+    }
+}
+
+fn copy_or_skip(
+    path: &Path,
+    shared: &DirTranslateShared,
+    err: Option<anyhow::Error>,
+) -> DirItemResult {
+    if let Some(dest_root) = shared.output_dir.as_ref() {
+        match copy_output_path_in_dir(&shared.src_dir, dest_root, path) {
+            Ok(dest) => {
+                if let Some(parent) = dest.parent() {
+                    if let Err(copy_err) = fs::create_dir_all(parent) {
+                        return DirItemResult {
+                            status: DirItemStatus::Failed,
+                            message: Some(format!(
+                                "{}: failed to create output dir: {}",
+                                path.display(),
+                                copy_err
+                            )),
+                        };
+                    }
+                }
+                if let Err(copy_err) = fs::copy(path, &dest) {
+                    return DirItemResult {
+                        status: DirItemStatus::Failed,
+                        message: Some(format!(
+                            "{}: failed to copy original: {}",
+                            path.display(),
+                            copy_err
+                        )),
+                    };
+                }
+                return DirItemResult {
+                    status: if err.is_some() {
+                        DirItemStatus::Failed
+                    } else {
+                        DirItemStatus::Copied
+                    },
+                    message: err.map(|value| format!("{}: {}", path.display(), value)),
+                };
+            }
+            Err(copy_err) => {
+                return DirItemResult {
+                    status: DirItemStatus::Failed,
+                    message: Some(format!("{}: {}", path.display(), copy_err)),
+                };
+            }
+        }
+    }
+
+    DirItemResult {
+        status: if err.is_some() {
+            DirItemStatus::Failed
+        } else {
+            DirItemStatus::Skipped
+        },
+        message: err.map(|value| format!("{}: {}", path.display(), value)),
+    }
 }
 
 fn show_histories() -> Result<String> {
@@ -752,5 +1306,46 @@ fn preferred_default_model(provider: ProviderKind) -> Option<&'static str> {
         ProviderKind::OpenAI => Some("gpt-5.1"),
         ProviderKind::Gemini => Some("gemini-2.5-flash"),
         ProviderKind::Claude => Some("claude-sonnet-4-5-20250929"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn output_path_uses_suffix_and_extension() {
+        let src = Path::new("/tmp/sample.txt");
+        let path = translated_output_path(src, data::XML_MIME, "_x").expect("path");
+        assert!(path.to_string_lossy().ends_with("sample_x.xml"));
+
+        let path = translated_output_path(src, data::XML_MIME, "").expect("path");
+        assert!(path.to_string_lossy().ends_with("sample.xml"));
+    }
+
+    #[test]
+    fn output_dir_uses_suffix() {
+        let dir = Path::new("/tmp/data");
+        let path = translated_output_dir(dir, "_translated");
+        assert!(path.to_string_lossy().ends_with("data_translated"));
+
+        let path = translated_output_dir(dir, "");
+        assert!(path.to_string_lossy().ends_with("data"));
+    }
+
+    #[test]
+    fn output_path_in_dir_changes_extension_when_mime_changes() {
+        let src_root = Path::new("/tmp/src");
+        let dest_root = Path::new("/tmp/out");
+        let src_file = Path::new("/tmp/src/sub/file.txt");
+        let dest = translated_output_path_in_dir(
+            src_root,
+            dest_root,
+            src_file,
+            data::TEXT_MIME,
+            data::MARKDOWN_MIME,
+        )
+        .expect("dest");
+        assert!(dest.to_string_lossy().ends_with("/tmp/out/sub/file.md"));
     }
 }

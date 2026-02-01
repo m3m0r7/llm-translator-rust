@@ -1619,6 +1619,7 @@ dependencies = [
  "base64",
  "clap",
  "futures-util",
+ "globset",
  "hound",
  "image 0.25.9",
  "infer",

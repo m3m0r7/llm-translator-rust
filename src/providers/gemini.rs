@@ -4,6 +4,9 @@ use base64::Engine;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use super::retry::{
+    is_rate_limited, retry_after, wait_with_backoff, RATE_LIMIT_BASE_DELAY, RATE_LIMIT_MAX_RETRIES,
+};
 use super::{
     Message, MessagePart, MessageRole, Provider, ProviderFuture, ProviderResponse, ProviderUsage,
     ToolSpec,
@@ -137,24 +140,33 @@ impl Provider for Gemini {
                 }
             });
 
-            let response = client
-                .post(url)
-                .header("x-goog-api-key", self.key)
-                .json(&body)
-                .send()
-                .await?;
+            let mut attempt = 0usize;
+            let mut delay = RATE_LIMIT_BASE_DELAY;
+            loop {
+                attempt += 1;
+                let response = client
+                    .post(&url)
+                    .header("x-goog-api-key", self.key.clone())
+                    .json(&body)
+                    .send()
+                    .await?;
 
-            let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            if !status.is_success() {
+                let status = response.status();
+                let retry_after = retry_after(response.headers());
+                let text = response.text().await.unwrap_or_default();
+                if status.is_success() {
+                    return extract_tool_response(&text, &tool_name, &self.model);
+                }
+                if is_rate_limited(status, &text) && attempt < RATE_LIMIT_MAX_RETRIES {
+                    delay = wait_with_backoff("Gemini", attempt, delay, retry_after).await;
+                    continue;
+                }
                 return Err(anyhow!(
                     "Gemini API error ({}): {}",
                     status,
                     extract_gemini_error(&text).unwrap_or(text)
                 ));
             }
-
-            extract_tool_response(&text, &tool_name, &self.model)
         })
     }
 }

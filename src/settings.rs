@@ -11,6 +11,10 @@ pub struct Settings {
     pub formally: HashMap<String, String>,
     pub system_languages: Vec<String>,
     pub history_limit: usize,
+    pub translated_suffix: String,
+    pub backup_ttl_days: u64,
+    pub directory_translation_threads: usize,
+    pub translation_ignore_file: String,
     pub overlay_text_color: String,
     pub overlay_stroke_color: String,
     pub overlay_fill_color: String,
@@ -27,6 +31,10 @@ impl Default for Settings {
             formally: HashMap::new(),
             system_languages: Vec::new(),
             history_limit: 10,
+            translated_suffix: "_translated".to_string(),
+            backup_ttl_days: 30,
+            directory_translation_threads: 3,
+            translation_ignore_file: ".llm-translation-rust-ignore".to_string(),
             overlay_text_color: "#c40000".to_string(),
             overlay_stroke_color: "#c40000".to_string(),
             overlay_fill_color: "#ffffff".to_string(),
@@ -51,6 +59,10 @@ struct SettingsFile {
 struct SystemSettings {
     languages: Option<Vec<String>>,
     histories: Option<usize>,
+    translated_suffix: Option<String>,
+    backup_ttl_days: Option<u64>,
+    directory_translation_threads: Option<usize>,
+    translation_ignore_file: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -116,6 +128,24 @@ impl Settings {
             if let Some(limit) = system.histories {
                 if limit > 0 {
                     self.history_limit = limit;
+                }
+            }
+            if let Some(suffix) = system.translated_suffix {
+                self.translated_suffix = suffix;
+            }
+            if let Some(ttl) = system.backup_ttl_days {
+                if ttl > 0 {
+                    self.backup_ttl_days = ttl;
+                }
+            }
+            if let Some(threads) = system.directory_translation_threads {
+                if threads > 0 {
+                    self.directory_translation_threads = threads;
+                }
+            }
+            if let Some(ignore_file) = system.translation_ignore_file {
+                if !ignore_file.trim().is_empty() {
+                    self.translation_ignore_file = ignore_file;
                 }
             }
         }
@@ -187,4 +217,29 @@ fn home_dir() -> Option<PathBuf> {
             Some(Path::new(home).join(".llm-translator-rust"))
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_util::with_temp_home;
+
+    #[test]
+    fn settings_override_translated_suffix_and_backup_ttl() {
+        with_temp_home(|home| {
+            let custom_path = home.join("override.toml");
+            let content = r#"
+[system]
+translated_suffix = "_xlat"
+backup_ttl_days = 7
+histories = 42
+"#;
+            fs::write(&custom_path, content).expect("write settings");
+
+            let settings = load_settings(Some(&custom_path)).expect("load settings");
+            assert_eq!(settings.translated_suffix, "_xlat");
+            assert_eq!(settings.backup_ttl_days, 7);
+            assert_eq!(settings.history_limit, 42);
+        });
+    }
 }
