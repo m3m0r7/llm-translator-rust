@@ -96,6 +96,11 @@ pub async fn translate_attachment<P: Provider + Clone>(
                 translate_pdf(&data.bytes, ocr_languages, translator, options, debug).await?;
             return Ok(Some(output));
         }
+        data::MARKDOWN_MIME => {
+            info!("attachment: markdown");
+            let output = translate_markdown(&data.bytes, translator, options).await?;
+            return Ok(Some(output));
+        }
         data::HTML_MIME => {
             info!("attachment: html");
             let output = translate_html(&data.bytes, with_commentout, translator, options).await?;
@@ -225,6 +230,50 @@ async fn translate_html<P: Provider + Clone>(
     Ok(cache.finish(data::HTML_MIME.to_string(), output.into_bytes()))
 }
 
+async fn translate_markdown<P: Provider + Clone>(
+    bytes: &[u8],
+    translator: &Translator<P>,
+    options: &TranslateOptions,
+) -> Result<AttachmentTranslation> {
+    use pulldown_cmark::{CowStr, Event, Options, Parser, Tag};
+
+    let markdown =
+        std::str::from_utf8(bytes).with_context(|| "failed to decode markdown as UTF-8")?;
+    let mut cache = TranslationCache::new();
+    let parser = Parser::new_ext(markdown, Options::all());
+    let mut events = Vec::new();
+    let mut code_block_depth = 0usize;
+
+    for event in parser {
+        match event {
+            event @ Event::Start(Tag::CodeBlock(_)) => {
+                code_block_depth = code_block_depth.saturating_add(1);
+                events.push(event);
+            }
+            event @ Event::End(Tag::CodeBlock(_)) => {
+                code_block_depth = code_block_depth.saturating_sub(1);
+                events.push(event);
+            }
+            Event::Text(text) => {
+                if code_block_depth == 0 && should_translate_text(text.as_ref()) {
+                    let translated = cache
+                        .translate_preserve_whitespace(text.as_ref(), translator, options)
+                        .await?;
+                    events.push(Event::Text(CowStr::from(translated)));
+                } else {
+                    events.push(Event::Text(text));
+                }
+            }
+            event => events.push(event),
+        }
+    }
+
+    let mut output = String::new();
+    pulldown_cmark_to_cmark::cmark(events.into_iter(), &mut output)
+        .with_context(|| "failed to render markdown")?;
+    Ok(cache.finish(data::MARKDOWN_MIME.to_string(), output.into_bytes()))
+}
+
 async fn translate_html_document<P: Provider + Clone>(
     document: &kuchiki::NodeRef,
     with_commentout: bool,
@@ -243,7 +292,7 @@ async fn translate_html_document<P: Provider + Clone>(
                     .translate_preserve_whitespace(&original, translator, options)
                     .await?;
                 if translated != original {
-                    *text.borrow_mut() = translated.into();
+                    *text.borrow_mut() = translated;
                 }
             }
         }
@@ -255,7 +304,7 @@ async fn translate_html_document<P: Provider + Clone>(
                         .translate_preserve_whitespace(&original, translator, options)
                         .await?;
                     if translated != original {
-                        *comment.borrow_mut() = translated.into();
+                        *comment.borrow_mut() = translated;
                     }
                 }
             }
@@ -517,7 +566,7 @@ async fn translate_yaml_comment<P: Provider + Clone>(
 ) -> Result<String> {
     let mut idx = 0usize;
     let bytes = comment.as_bytes();
-    if bytes.get(0) != Some(&b'#') {
+    if bytes.first() != Some(&b'#') {
         return Ok(comment.to_string());
     }
     idx += 1;
@@ -564,7 +613,7 @@ async fn translate_yaml_scalar<P: Provider + Clone>(
     if is_yaml_literal(trimmed) {
         return Ok(value.to_string());
     }
-    if trimmed.starts_with(|ch: char| matches!(ch, '|' | '>' | '&' | '*' | '!' | '@')) {
+    if trimmed.starts_with(['|', '>', '&', '*', '!', '@']) {
         return Ok(value.to_string());
     }
     if trimmed.starts_with('[') || trimmed.starts_with('{') {
@@ -712,7 +761,7 @@ fn needs_yaml_quotes(value: &str) -> bool {
     if trimmed.len() != value.len() {
         return true;
     }
-    if trimmed.starts_with(|ch: char| matches!(ch, '-' | '?' | ':' | '!' | '@' | '&' | '*' | '#')) {
+    if trimmed.starts_with(['-', '?', ':', '!', '@', '&', '*', '#']) {
         return true;
     }
     if trimmed.contains(['#', ':', '\n', '\r', '\t']) {
@@ -2875,10 +2924,11 @@ fn looks_like_code(value: &str) -> bool {
     if trimmed.contains('<') && trimmed.contains('>') {
         return true;
     }
-    if !trimmed.chars().any(|ch| ch.is_whitespace()) && trimmed.is_ascii() {
-        if looks_like_identifier(trimmed) {
-            return true;
-        }
+    if !trimmed.chars().any(|ch| ch.is_whitespace())
+        && trimmed.is_ascii()
+        && looks_like_identifier(trimmed)
+    {
+        return true;
     }
     false
 }

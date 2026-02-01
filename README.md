@@ -112,7 +112,7 @@ echo 猫 | llm-translator-rust --pos -l en
 # File translation
 cat foobar.txt | llm-translator-rust -l en
 
-# File attachment translation (image/doc/docx/pptx/xlsx/pdf/txt/audio)
+# File attachment translation (image/doc/docx/pptx/xlsx/pdf/txt/md/audio)
 llm-translator-rust --data ./slides.pptx --data-mime pptx -l en
 llm-translator-rust --data ./scan.png -l ja
 llm-translator-rust --data ./voice.mp3 -l en
@@ -319,8 +319,8 @@ eng = "英語"
 | `-f` | `--formal` | Formality key (from `settings.toml` `[formally]`) | `formal` |
 | `-L` | `--source-lang` | Source language (ISO 639-1/2/3 or `auto`) | `auto` |
 | `-s` | `--slang` | Include slang keywords when appropriate | `false` |
-| `-d` | `--data` | File attachment (image/doc/docx/pptx/xlsx/pdf/txt/html/json/yaml/po/audio) |  |
-| `-M` | `--data-mime` | Mime type for `--data` (or stdin) (`auto`, `image/*`, `pdf`, `doc`, `docx`, `docs`, `pptx`, `xlsx`, `txt`, `html`, `json`, `yaml`, `po`, `mp3`, `wav`, `m4a`, `flac`, `ogg`) | `auto` |
+| `-d` | `--data` | File attachment (image/doc/docx/pptx/xlsx/pdf/txt/md/html/json/yaml/po/audio) |  |
+| `-M` | `--data-mime` | Mime type for `--data` (or stdin) (`auto`, `image/*`, `pdf`, `doc`, `docx`, `docs`, `pptx`, `xlsx`, `txt`, `md`, `markdown`, `html`, `json`, `yaml`, `po`, `mp3`, `wav`, `m4a`, `flac`, `ogg`) | `auto` |
 |  | `--with-commentout` | Translate comment-out text (HTML/YAML/PO) |  |
 |  | `--show-enabled-languages` | Show enabled translation languages |  |
 |  | `--show-enabled-styles` | Show enabled style keys |  |

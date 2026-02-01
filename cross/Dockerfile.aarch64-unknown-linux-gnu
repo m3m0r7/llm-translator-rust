@@ -1,0 +1,18 @@
+FROM ghcr.io/cross-rs/aarch64-unknown-linux-gnu:latest
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      build-essential \
+      clang \
+      llvm \
+      llvm-dev \
+      libclang-dev \
+      pkg-config \
+      gcc-aarch64-linux-gnu \
+      libc6-dev-arm64-cross && \
+    rm -rf /var/lib/apt/lists/*
+
+# Make libclang discoverable for clang-sys in the container.
+RUN libdir="$(llvm-config --libdir)" && \
+    ln -sf "${libdir}/libclang.so" /usr/lib/libclang.so || \
+    ln -sf "${libdir}/libclang.so.1" /usr/lib/libclang.so

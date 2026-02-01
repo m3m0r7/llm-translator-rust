@@ -9,6 +9,7 @@ pub const XLSX_MIME: &str = "application/vnd.openxmlformats-officedocument.sprea
 pub const PDF_MIME: &str = "application/pdf";
 pub const DOC_MIME: &str = "application/msword";
 pub const TEXT_MIME: &str = "text/plain";
+pub const MARKDOWN_MIME: &str = "text/markdown";
 pub const HTML_MIME: &str = "text/html";
 pub const JSON_MIME: &str = "application/json";
 pub const YAML_MIME: &str = "text/yaml";
@@ -88,6 +89,7 @@ fn resolve_mime(input: &str, bytes: &[u8], path: Option<&Path>) -> Result<String
         "xlsx" => return Ok(XLSX_MIME.to_string()),
         "txt" => return Ok(TEXT_MIME.to_string()),
         "text" => return Ok(TEXT_MIME.to_string()),
+        "md" | "markdown" => return Ok(MARKDOWN_MIME.to_string()),
         "html" | "htm" => return Ok(HTML_MIME.to_string()),
         "json" => return Ok(JSON_MIME.to_string()),
         "yaml" | "yml" => return Ok(YAML_MIME.to_string()),
@@ -113,10 +115,14 @@ fn resolve_mime(input: &str, bytes: &[u8], path: Option<&Path>) -> Result<String
         || lower == PDF_MIME
         || lower == DOC_MIME
         || lower == TEXT_MIME
+        || lower == MARKDOWN_MIME
         || lower == HTML_MIME
         || lower == JSON_MIME
         || lower == YAML_MIME
         || lower == PO_MIME
+        || lower == "text/x-markdown"
+        || lower == "application/markdown"
+        || lower == "application/x-markdown"
         || lower == "application/x-yaml"
         || lower == "application/yaml"
         || lower == "text/x-yaml"
@@ -129,6 +135,9 @@ fn resolve_mime(input: &str, bytes: &[u8], path: Option<&Path>) -> Result<String
         || lower == OGG_MIME
     {
         return Ok(match lower.as_str() {
+            "text/x-markdown" | "application/markdown" | "application/x-markdown" => {
+                MARKDOWN_MIME.to_string()
+            }
             "application/x-yaml" | "application/yaml" | "text/x-yaml" => YAML_MIME.to_string(),
             "text/x-gettext-translation" | "application/x-gettext-translation" => {
                 PO_MIME.to_string()
@@ -144,13 +153,20 @@ fn resolve_mime(input: &str, bytes: &[u8], path: Option<&Path>) -> Result<String
     }
 
     Err(anyhow!(
-        "unsupported --data-mime '{}' (expected auto, image/*, pdf, doc, docx, docs, pptx, xlsx, txt, html, json, yaml, po, mp3, wav, m4a, flac, ogg)",
+        "unsupported --data-mime '{}' (expected auto, image/*, pdf, doc, docx, docs, pptx, xlsx, txt, md, markdown, html, json, yaml, po, mp3, wav, m4a, flac, ogg)",
         raw
     ))
 }
 
 fn detect_mime(bytes: &[u8], path: Option<&Path>, require_image: bool) -> Result<String> {
     if let Some(detected) = sniff_mime_bytes(bytes) {
+        if !require_image && detected == TEXT_MIME {
+            if let Some(ext) = extension_lower(path) {
+                if let Some(mime) = mime_from_extension(&ext) {
+                    return Ok(mime.to_string());
+                }
+            }
+        }
         if require_image && !detected.starts_with("image/") {
             return Err(anyhow!(
                 "data-mime image/* requires image data (detected '{}')",
@@ -192,6 +208,7 @@ fn sniff_mime_bytes(bytes: &[u8]) -> Option<&'static str> {
         HTML_MIME => Some(HTML_MIME),
         JSON_MIME => Some(JSON_MIME),
         YAML_MIME | "application/x-yaml" | "text/x-yaml" => Some(YAML_MIME),
+        MARKDOWN_MIME | "text/x-markdown" => Some(MARKDOWN_MIME),
         PO_MIME | "text/x-gettext-translation" | "application/x-gettext-translation" => {
             Some(PO_MIME)
         }
@@ -240,6 +257,7 @@ fn mime_from_extension(ext: &str) -> Option<&'static str> {
         "pptx" => Some(PPTX_MIME),
         "xlsx" => Some(XLSX_MIME),
         "txt" => Some(TEXT_MIME),
+        "md" | "markdown" => Some(MARKDOWN_MIME),
         "html" | "htm" => Some(HTML_MIME),
         "json" => Some(JSON_MIME),
         "yaml" | "yml" => Some(YAML_MIME),
@@ -268,6 +286,7 @@ pub fn extension_from_mime(mime: &str) -> Option<&'static str> {
         PPTX_MIME => Some("pptx"),
         XLSX_MIME => Some("xlsx"),
         TEXT_MIME => Some("txt"),
+        MARKDOWN_MIME => Some("md"),
         HTML_MIME => Some("html"),
         JSON_MIME => Some("json"),
         YAML_MIME => Some("yaml"),

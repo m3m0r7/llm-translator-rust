@@ -34,11 +34,11 @@ struct Cli {
     #[arg(short = 's', long = "slang")]
     slang: bool,
 
-    /// File to translate (image/doc/docx/pptx/xlsx/pdf/txt/html/json/yaml/po/audio)
+    /// File to translate (image/doc/docx/pptx/xlsx/pdf/txt/md/html/json/yaml/po/audio)
     #[arg(short = 'd', long = "data")]
     data: Option<String>,
 
-    /// Mime type for --data (auto, image/*, pdf, doc, docx, docs, pptx, xlsx, txt, html, json, yaml, po, mp3, wav, m4a, flac, ogg)
+    /// Mime type for --data (auto, image/*, pdf, doc, docx, docs, pptx, xlsx, txt, md, markdown, html, json, yaml, po, mp3, wav, m4a, flac, ogg)
     #[arg(short = 'M', long = "data-mime")]
     data_mime: Option<String>,
 

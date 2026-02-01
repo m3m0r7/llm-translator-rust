@@ -55,6 +55,13 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Install Linux build deps
+        if: matrix.os == 'linux' && matrix.use_cross != true
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang llvm llvm-dev libclang-dev pkg-config
+
       - name: Build
         if: matrix.use_cross != true
         run: cargo build --release --target ${{ matrix.target }}
@@ -65,6 +72,8 @@ jobs:
 
       - name: Build (cross)
         if: matrix.use_cross == true
+        env:
+          CROSS_CONFIG: Cross.toml
         run: cross build --release --target ${{ matrix.target }}
 
       - name: Package
