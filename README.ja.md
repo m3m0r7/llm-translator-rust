@@ -49,7 +49,8 @@ cargo install --git https://github.com/m3m0r7/llm-translator-rust --locked
 ```bash
 git clone https://github.com/m3m0r7/llm-translator-rust
 cd llm-translator-rust
-make install
+make
+sudo make install
 ```
 
 生成物:
@@ -60,7 +61,10 @@ make install
 補足:
 - macOS/Linux は `/usr/local/bin` が既定（必要なら `sudo make install`）
 - Windows (MSYS/Git Bash) は `%USERPROFILE%/.cargo/bin`
-- `make install` は `~/.llm-translator-rust/settings.toml` が無ければ `settings.toml` をコピーします。
+- `make` は `build_env.toml` を生成し、バイナリに埋め込みます（ポータブル配布時にファイルは不要）。
+- `make` に環境変数を渡してパスを上書きできます。例:
+  `BASE_DIRECTORY=~/.llm-translator-rust BIN_DIRECTORY=target/release INSTALL_DIRECTORY=/usr/local/bin SETTINGS_FILE=~/.llm-translator-rust/settings.toml BUILD_ENV_PATH=build_env.toml make`
+- `make install` は `settings.toml` が無い場合 `baseDirectory` にコピーします。
 
 ## クイックスタート
 
@@ -159,7 +163,7 @@ llm-translator-rust --data ./docs -l ja
 ## 上書きモード (--overwrite)
 
 `--overwrite` は `--data` で指定したファイル/ディレクトリに上書きで書き込みます。
-書き込み前に `~/.llm-translated-rust/backup` へバックアップします。
+書き込み前に `~/.llm-translator-rust/backup` へバックアップします。
 保持期間は `settings.toml` の `[system].backup_ttl_days`（既定: 30）で制御します。
 
 ```bash
@@ -405,7 +409,7 @@ eng = "英語"
 |  | `--force` | MIME 判定が不確かな場合でもテキスト扱いで翻訳 |  |
 |  | `--debug-ocr` | OCR デバッグ用の bbox 画像/JSON を出力 |  |
 |  | `--whisper-model` | Whisper モデル名またはパス |  |
-|  | `--overwrite` | 入力ファイル/ディレクトリを上書き（バックアップは `~/.llm-translated-rust/backup`） |  |
+|  | `--overwrite` | 入力ファイル/ディレクトリを上書き（バックアップは `~/.llm-translator-rust/backup`） |  |
 |  | `--directory-translation-threads` | ディレクトリ翻訳の並列数 |  |
 |  | `--ignore-translation-file` | ディレクトリ翻訳の無視パターン（gitignore 形式） |  |
 | `-o` | `--out` | 出力先（ファイル/ディレクトリ） |  |

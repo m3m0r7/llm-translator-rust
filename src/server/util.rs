@@ -14,8 +14,7 @@ pub(crate) fn write_temp_file(bytes: &[u8], mime: &str, dir: &Path) -> Result<St
         .prefix("llm-translator-")
         .suffix(&suffix)
         .tempfile_in(dir)?;
-    std::fs::write(file.path(), bytes)
-        .with_context(|| "failed to write translated temp file")?;
+    std::fs::write(file.path(), bytes).with_context(|| "failed to write translated temp file")?;
     let temp_path = file.into_temp_path();
     let path = temp_path
         .keep()

@@ -103,8 +103,7 @@ fn render_system_prompt(options: &TranslateOptions, _settings: &Settings) -> Res
     let mut context = TeraContext::new();
     context.insert("source_lang", options.source_lang.as_str());
     context.insert("tool_name", TOOL_NAME);
-    Tera::one_off(&template, &context, false)
-        .with_context(|| "failed to render correction prompt")
+    Tera::one_off(&template, &context, false).with_context(|| "failed to render correction prompt")
 }
 
 fn parse_tool_args(

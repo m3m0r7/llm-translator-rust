@@ -2,35 +2,60 @@ SHELL := /bin/sh
 
 BIN_NAME := llm-translator-rust
 BUILD_DIR := target/release
+BUILD_TOOL_NAME := llm-translator-build
+BUILD_TOOL_MANIFEST := build/Cargo.toml
+BUILD_TOOL_BIN := build/target/release/$(BUILD_TOOL_NAME)
+BUILD_ENV_PATH ?= build_env.toml
+BUILD_TOOL_BUILDER ?= cargo
+BUILD_TARGET ?=
+BUILD_BIN_DIR ?= $(BUILD_DIR)
+BASE_DIRECTORY ?=
+BIN_DIRECTORY ?=
+INSTALL_DIRECTORY ?=
+SETTINGS_FILE ?=
 ifeq ($(OS),Windows_NT)
 	BIN_EXT := .exe
-	PREFIX ?= $(USERPROFILE)/.cargo
-	SETTINGS_DIR := $(USERPROFILE)/.llm-translator-rust
+	BUILD_TOOL_BIN := $(BUILD_TOOL_BIN).exe
 else
 	BIN_EXT :=
 	UNAME_S := $(shell uname -s)
-	PREFIX ?= /usr/local
-	SETTINGS_DIR := $(HOME)/.llm-translator-rust
 endif
 
-BIN_PATH := $(BUILD_DIR)/$(BIN_NAME)$(BIN_EXT)
-INSTALL_DIR := $(PREFIX)/bin
-INSTALL_PATH := $(INSTALL_DIR)/$(BIN_NAME)$(BIN_EXT)
-SETTINGS_FILE := $(SETTINGS_DIR)/settings.toml
+BUILD_TARGET_ARG :=
+ifneq ($(strip $(BUILD_TARGET)),)
+	BUILD_TARGET_ARG := --target "$(BUILD_TARGET)"
+	BUILD_BIN_DIR := target/$(BUILD_TARGET)/release
+endif
 
-.PHONY: install clean build
+BUILD_ENV_ARGS :=
+ifneq ($(strip $(BASE_DIRECTORY)),)
+	BUILD_ENV_ARGS += --base-directory "$(BASE_DIRECTORY)"
+endif
+ifneq ($(strip $(BIN_DIRECTORY)),)
+	BUILD_ENV_ARGS += --bin-directory "$(BIN_DIRECTORY)"
+endif
+ifneq ($(strip $(INSTALL_DIRECTORY)),)
+	BUILD_ENV_ARGS += --install-directory "$(INSTALL_DIRECTORY)"
+endif
+ifneq ($(strip $(SETTINGS_FILE)),)
+	BUILD_ENV_ARGS += --settings-file "$(SETTINGS_FILE)"
+endif
 
-build:
-	cargo build --release
+.PHONY: install clean build build-tool
 
-install: build
-	@if [ -z "$(PREFIX)" ]; then echo "PREFIX is empty; set PREFIX=/usr/local or PREFIX=$$HOME/.local"; exit 1; fi
-	@mkdir -p "$(INSTALL_DIR)"
-	@cp "$(BIN_PATH)" "$(INSTALL_PATH)"
-	@mkdir -p "$(SETTINGS_DIR)"
-	@chmod -R a+rwX "$(SETTINGS_DIR)"
-	@if [ ! -f "$(SETTINGS_FILE)" ]; then cp settings.toml "$(SETTINGS_FILE)"; fi
-	@echo "Installed to $(INSTALL_PATH)"
+build: build-tool
+	@$(BUILD_TOOL_BIN) build --env-path "$(BUILD_ENV_PATH)" --bin-directory "$(BUILD_BIN_DIR)" --project-dir "$(CURDIR)" --builder "$(BUILD_TOOL_BUILDER)" $(BUILD_TARGET_ARG) $(BUILD_ENV_ARGS)
+
+build-tool: $(BUILD_TOOL_BIN)
+
+$(BUILD_TOOL_BIN): build/Cargo.toml build/Cargo.lock build/main.rs
+	@cargo build --release --manifest-path "$(BUILD_TOOL_MANIFEST)"
+
+install:
+	@if [ ! -f "$(BUILD_ENV_PATH)" ]; then echo "$(BUILD_ENV_PATH) not found. Run 'make' first."; exit 1; fi
+	@$(BUILD_TOOL_BIN) install --env-path "$(BUILD_ENV_PATH)" --bin-name "$(BIN_NAME)" --bin-ext "$(BIN_EXT)" --project-dir "$(CURDIR)"
 
 clean:
 	cargo clean
+	@cargo clean --manifest-path "$(BUILD_TOOL_MANIFEST)" || true
+	@rm -f "$(BUILD_ENV_PATH)"

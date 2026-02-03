@@ -364,9 +364,11 @@ pub fn normalize_mime_hint(input: &str) -> Option<String> {
         "pptx" => PPTX_MIME.to_string(),
         "xlsx" => XLSX_MIME.to_string(),
         "txt" | "text" => TEXT_MIME.to_string(),
-        "md" | "markdown" | "text/x-markdown" | "application/markdown" | "application/x-markdown" => {
-            MARKDOWN_MIME.to_string()
-        }
+        "md"
+        | "markdown"
+        | "text/x-markdown"
+        | "application/markdown"
+        | "application/x-markdown" => MARKDOWN_MIME.to_string(),
         "html" | "htm" => HTML_MIME.to_string(),
         "json" => JSON_MIME.to_string(),
         "yaml" | "yml" | "application/x-yaml" | "application/yaml" | "text/x-yaml" => {

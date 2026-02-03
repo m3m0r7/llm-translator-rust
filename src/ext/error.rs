@@ -4,7 +4,7 @@ use std::os::raw::c_char;
 use std::ptr;
 
 thread_local! {
-    static LAST_ERROR: RefCell<Option<String>> = RefCell::new(None);
+    static LAST_ERROR: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
 pub(crate) fn set_last_error(message: impl Into<String>) {

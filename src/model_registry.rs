@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use crate::build_env;
 use crate::providers::ProviderKind;
 
 const TTL_SECONDS: u64 = 60 * 60 * 24;
@@ -72,12 +73,7 @@ fn base_cache_dir() -> PathBuf {
 }
 
 fn history_dest_dir() -> PathBuf {
-    if let Ok(home) = std::env::var("HOME") {
-        if !home.trim().is_empty() {
-            return Path::new(&home).join(".llm-translator-rust/.cache/dest");
-        }
-    }
-    Path::new(".llm-translator-rust/.cache/dest").to_path_buf()
+    build_env::history_dest_dir()
 }
 
 pub fn get_last_using_model() -> Result<Option<String>> {

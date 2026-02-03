@@ -34,8 +34,8 @@ pub(crate) async fn translate_tsx<P: Provider + Clone>(
 ) -> Result<AttachmentTranslation> {
     let input = std::str::from_utf8(bytes).with_context(|| "failed to decode tsx as UTF-8")?;
     let mut cache = TranslationCache::new();
-    let script = translate_script_text(input, with_commentout, &mut cache, translator, options)
-        .await?;
+    let script =
+        translate_script_text(input, with_commentout, &mut cache, translator, options).await?;
     let output = translate_jsx_text(&script, &mut cache, translator, options).await?;
     Ok(cache.finish(data::TSX_MIME.to_string(), output.into_bytes()))
 }
@@ -46,23 +46,19 @@ pub(crate) async fn translate_mermaid<P: Provider + Clone>(
     translator: &Translator<P>,
     options: &TranslateOptions,
 ) -> Result<AttachmentTranslation> {
-    let input =
-        std::str::from_utf8(bytes).with_context(|| "failed to decode mermaid as UTF-8")?;
+    let input = std::str::from_utf8(bytes).with_context(|| "failed to decode mermaid as UTF-8")?;
     let mut cache = TranslationCache::new();
     let mut out_lines = Vec::new();
     for line in input.split('\n') {
         if line.trim_start().starts_with("%%") {
             if with_commentout {
-                out_lines.push(
-                    translate_mermaid_comment(line, &mut cache, translator, options).await?,
-                );
+                out_lines
+                    .push(translate_mermaid_comment(line, &mut cache, translator, options).await?);
             } else {
                 out_lines.push(line.to_string());
             }
         } else {
-            out_lines.push(
-                translate_mermaid_line(line, &mut cache, translator, options).await?,
-            );
+            out_lines.push(translate_mermaid_line(line, &mut cache, translator, options).await?);
         }
     }
     let output = out_lines.join("\n");
@@ -78,8 +74,8 @@ async fn translate_script<P: Provider + Clone>(
 ) -> Result<AttachmentTranslation> {
     let input = std::str::from_utf8(bytes).with_context(|| "failed to decode script as UTF-8")?;
     let mut cache = TranslationCache::new();
-    let output = translate_script_text(input, with_commentout, &mut cache, translator, options)
-        .await?;
+    let output =
+        translate_script_text(input, with_commentout, &mut cache, translator, options).await?;
     Ok(cache.finish(mime.to_string(), output.into_bytes()))
 }
 
@@ -123,10 +119,18 @@ async fn translate_script_text<P: Provider + Clone>(
                         out.push_str("*/");
                     }
                 } else {
-                    let close = if end + 2 <= input.len() { end + 2 } else { input.len() };
+                    let close = if end + 2 <= input.len() {
+                        end + 2
+                    } else {
+                        input.len()
+                    };
                     out.push_str(&input[i..close]);
                 }
-                i = if end + 2 <= input.len() { end + 2 } else { input.len() };
+                i = if end + 2 <= input.len() {
+                    end + 2
+                } else {
+                    input.len()
+                };
                 continue;
             }
         }
@@ -200,8 +204,9 @@ async fn translate_jsx_text<P: Provider + Clone>(
             if text.contains('{') || text.contains('}') || !should_translate_text(text) {
                 out.push_str(text);
             } else {
-                let translated =
-                    cache.translate_preserve_whitespace(text, translator, options).await?;
+                let translated = cache
+                    .translate_preserve_whitespace(text, translator, options)
+                    .await?;
                 out.push_str(&translated);
             }
             prev_non_ws = last_non_whitespace(text).or(prev_non_ws);
@@ -226,7 +231,10 @@ fn looks_like_jsx_tag_start(prev: Option<char>, next: Option<char>) -> bool {
     }
     match prev {
         None => true,
-        Some(ch) => matches!(ch, '(' | '{' | '[' | '=' | ':' | ',' | '?' | '!' | ';' | '>'),
+        Some(ch) => matches!(
+            ch,
+            '(' | '{' | '[' | '=' | ':' | ',' | '?' | '!' | ';' | '>'
+        ),
     }
 }
 
@@ -330,7 +338,9 @@ async fn translate_line_comment<P: Provider + Clone>(
     if !should_translate_text(body) {
         return Ok(comment.to_string());
     }
-    let translated = cache.translate_preserve_whitespace(body, translator, options).await?;
+    let translated = cache
+        .translate_preserve_whitespace(body, translator, options)
+        .await?;
     Ok(format!("{}{}", prefix, translated))
 }
 
@@ -355,7 +365,9 @@ async fn translate_block_comment<P: Provider + Clone>(
             }
         }
         if should_translate_text(body) {
-            let translated = cache.translate_preserve_whitespace(body, translator, options).await?;
+            let translated = cache
+                .translate_preserve_whitespace(body, translator, options)
+                .await?;
             out_lines.push(format!("{}{}", prefix, translated));
         } else {
             out_lines.push(line.to_string());
@@ -578,7 +590,9 @@ async fn translate_mermaid_comment<P: Provider + Clone>(
     if !should_translate_text(text) {
         return Ok(line.to_string());
     }
-    let translated = cache.translate_preserve_whitespace(text, translator, options).await?;
+    let translated = cache
+        .translate_preserve_whitespace(text, translator, options)
+        .await?;
     Ok(format!("{}%%{}", indent, translated))
 }
 
@@ -612,7 +626,9 @@ async fn translate_mermaid_line<P: Provider + Clone>(
                 let end_idx = i + 1 + end;
                 let content = &line[i + 1..end_idx];
                 if should_translate_text(content) {
-                    let translated = cache.translate_preserve_whitespace(content, translator, options).await?;
+                    let translated = cache
+                        .translate_preserve_whitespace(content, translator, options)
+                        .await?;
                     out.push('|');
                     out.push_str(&translated);
                     out.push('|');

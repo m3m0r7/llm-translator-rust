@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::build_env;
+
 const DEFAULT_SETTINGS_TOML: &str = include_str!("../settings.toml");
 
 #[derive(Debug, Clone)]
@@ -97,15 +99,16 @@ struct ServerSettings {
 
 pub fn load_settings(extra_path: Option<&Path>) -> Result<Settings> {
     let mut settings = Settings::default();
-    ensure_home_settings_file()?;
+    ensure_settings_file()?;
 
     let mut ordered_paths = Vec::new();
     ordered_paths.push(PathBuf::from("settings.toml"));
     ordered_paths.push(PathBuf::from("settings.local.toml"));
 
-    if let Some(home) = home_dir() {
-        ordered_paths.push(home.join("settings.toml"));
-        ordered_paths.push(home.join("settings.local.toml"));
+    let settings_file = build_env::settings_file();
+    ordered_paths.push(settings_file.clone());
+    if let Some(dir) = settings_file.parent() {
+        ordered_paths.push(dir.join("settings.local.toml"));
     }
 
     if let Some(extra) = extra_path {
@@ -225,29 +228,16 @@ impl Settings {
     }
 }
 
-fn ensure_home_settings_file() -> Result<()> {
-    let Some(home) = home_dir() else {
-        return Ok(());
-    };
-    fs::create_dir_all(&home)
-        .with_context(|| format!("failed to create settings directory: {}", home.display()))?;
-    let path = home.join("settings.toml");
+fn ensure_settings_file() -> Result<()> {
+    let dir = build_env::settings_dir();
+    fs::create_dir_all(&dir)
+        .with_context(|| format!("failed to create settings directory: {}", dir.display()))?;
+    let path = build_env::settings_file();
     if !path.exists() {
         fs::write(&path, DEFAULT_SETTINGS_TOML)
             .with_context(|| format!("failed to write settings: {}", path.display()))?;
     }
     Ok(())
-}
-
-fn home_dir() -> Option<PathBuf> {
-    std::env::var("HOME").ok().and_then(|home| {
-        let home = home.trim();
-        if home.is_empty() {
-            None
-        } else {
-            Some(Path::new(home).join(".llm-translator-rust"))
-        }
-    })
 }
 
 #[cfg(test)]

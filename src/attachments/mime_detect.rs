@@ -25,7 +25,8 @@ pub async fn detect_mime_with_llm<P: Provider + Clone>(
     translator: &Translator<P>,
 ) -> Result<MimeDetection> {
     let tool = translations::mime_tool_spec(MIME_TOOL_NAME);
-    let prompt = translations::render_mime_prompt(MIME_TOOL_NAME, data.name.as_deref(), &mime_list())?;
+    let prompt =
+        translations::render_mime_prompt(MIME_TOOL_NAME, data.name.as_deref(), &mime_list())?;
     let response = translator
         .call_tool_with_data(
             tool,

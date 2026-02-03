@@ -239,8 +239,14 @@ settings_get_string!(
 );
 settings_set_string!(llm_ext_settings_set_overlay_text_color, overlay_text_color);
 settings_get_string!(llm_ext_settings_get_overlay_text_color, overlay_text_color);
-settings_set_string!(llm_ext_settings_set_overlay_stroke_color, overlay_stroke_color);
-settings_get_string!(llm_ext_settings_get_overlay_stroke_color, overlay_stroke_color);
+settings_set_string!(
+    llm_ext_settings_set_overlay_stroke_color,
+    overlay_stroke_color
+);
+settings_get_string!(
+    llm_ext_settings_get_overlay_stroke_color,
+    overlay_stroke_color
+);
 settings_set_string!(llm_ext_settings_set_overlay_fill_color, overlay_fill_color);
 settings_get_string!(llm_ext_settings_get_overlay_fill_color, overlay_fill_color);
 settings_set_option_string!(
@@ -277,10 +283,7 @@ settings_set_option_string!(llm_ext_settings_set_server_tmp_dir, server_tmp_dir)
 settings_get_option_string!(llm_ext_settings_get_server_tmp_dir, server_tmp_dir);
 
 #[no_mangle]
-pub extern "C" fn llm_ext_settings_set_server_port(
-    settings: *mut ExtSettings,
-    value: u16,
-) -> bool {
+pub extern "C" fn llm_ext_settings_set_server_port(settings: *mut ExtSettings, value: u16) -> bool {
     let Some(settings) = (unsafe { settings.as_mut() }) else {
         set_last_error("settings is null");
         return false;
@@ -329,9 +332,7 @@ pub extern "C" fn llm_ext_settings_add_system_language(
 }
 
 #[no_mangle]
-pub extern "C" fn llm_ext_settings_system_languages_len(
-    settings: *const ExtSettings,
-) -> usize {
+pub extern "C" fn llm_ext_settings_system_languages_len(settings: *const ExtSettings) -> usize {
     let Some(settings) = (unsafe { settings.as_ref() }) else {
         set_last_error("settings is null");
         return 0;

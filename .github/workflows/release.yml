@@ -64,7 +64,16 @@ jobs:
 
       - name: Build
         if: matrix.use_cross != true
-        run: cargo build --release --target ${{ matrix.target }}
+        shell: bash
+        run: |
+          cargo build --release --manifest-path build/Cargo.toml
+          build/target/release/llm-translator-build${{ matrix.ext }} \
+            build \
+            --env-path build_env.toml \
+            --bin-dir "target/${{ matrix.target }}/release" \
+            --project-dir . \
+            --builder cargo \
+            --target "${{ matrix.target }}"
 
       - name: Install cross
         if: matrix.use_cross == true
@@ -74,7 +83,16 @@ jobs:
         if: matrix.use_cross == true
         env:
           CROSS_CONFIG: Cross.toml
-        run: cross build --release --target ${{ matrix.target }}
+        shell: bash
+        run: |
+          cargo build --release --manifest-path build/Cargo.toml
+          build/target/release/llm-translator-build${{ matrix.ext }} \
+            build \
+            --env-path build_env.toml \
+            --bin-dir "target/${{ matrix.target }}/release" \
+            --project-dir . \
+            --builder cross \
+            --target "${{ matrix.target }}"
 
       - name: Package
         shell: bash

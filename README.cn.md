@@ -49,7 +49,8 @@ cargo install --git https://github.com/m3m0r7/llm-translator-rust --locked
 ```bash
 git clone https://github.com/m3m0r7/llm-translator-rust
 cd llm-translator-rust
-make install
+make
+sudo make install
 ```
 
 二进制位于：
@@ -61,7 +62,9 @@ make install
 注意：
 - macOS/Linux 默认安装到 `/usr/local/bin`（必要时使用 `sudo make install`）
 - Windows（MSYS/Git Bash）：`%USERPROFILE%/.cargo/bin`
-- `make install` 若检测到 `~/.llm-translator-rust/settings.toml` 不存在，会自动复制一份 `settings.toml`
+- make writes build_env.toml and embeds it into the binary (portable builds don't need the file at runtime).
+- Override paths via env vars passed to make, e.g. BASE_DIRECTORY=~/.llm-translator-rust BIN_DIRECTORY=target/release INSTALL_DIRECTORY=/usr/local/bin SETTINGS_FILE=~/.llm-translator-rust/settings.toml BUILD_ENV_PATH=build_env.toml make
+- `make install` copies `settings.toml` to `baseDirectory` if it does not exist.
 
 ## Quickstart
 
@@ -158,7 +161,7 @@ llm-translator-rust --data ./docs -l ja
 ## Overwrite mode (--overwrite)
 
 `--overwrite` 会对 `--data` 的文件或目录原地写入。
-写入前会备份到 `~/.llm-translated-rust/backup`。
+写入前会备份到 `~/.llm-translator-rust/backup`。
 保留天数由 `settings.toml` `[system].backup_ttl_days` 控制（默认 30）。
 
 ```bash
@@ -404,7 +407,7 @@ eng = "英語"
 |  | `--force` | MIME 判定不确定时强制按文本翻译 |  |
 |  | `--debug-ocr` | 输出 OCR 调试叠加/JSON |  |
 |  | `--whisper-model` | Whisper 模型名或路径 |  |
-|  | `--overwrite` | 覆盖写入（备份在 `~/.llm-translated-rust/backup`） |  |
+|  | `--overwrite` | 覆盖写入（备份在 `~/.llm-translator-rust/backup`） |  |
 |  | `--directory-translation-threads` | 目录翻译并发数 |  |
 |  | `--ignore-translation-file` | 目录翻译忽略规则（gitignore 风格） |  |
 | `-o` | `--out` | 翻译输出路径 |  |

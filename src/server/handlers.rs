@@ -54,11 +54,6 @@ async fn translate(
 
     match result {
         Ok(response) => Ok(Json(response)),
-        Err(err) => Err((
-            err.status,
-            Json(ErrorResponse {
-                error: err.message,
-            }),
-        )),
+        Err(err) => Err((err.status, Json(ErrorResponse { error: err.message }))),
     }
 }

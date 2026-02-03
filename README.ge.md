@@ -49,7 +49,8 @@ cargo install --git https://github.com/m3m0r7/llm-translator-rust --locked
 ```bash
 git clone https://github.com/m3m0r7/llm-translator-rust
 cd llm-translator-rust
-make install
+make
+sudo make install
 ```
 
 Binary liegt unter:
@@ -61,7 +62,9 @@ Binary liegt unter:
 Hinweise:
 - macOS/Linux: Standard `/usr/local/bin` (bei Bedarf `sudo make install`)
 - Windows (MSYS/Git Bash): `%USERPROFILE%/.cargo/bin`
-- `make install` kopiert `settings.toml` nach `~/.llm-translator-rust/settings.toml`, falls nicht vorhanden
+- make writes build_env.toml and embeds it into the binary (portable builds don't need the file at runtime).
+- Override paths via env vars passed to make, e.g. BASE_DIRECTORY=~/.llm-translator-rust BIN_DIRECTORY=target/release INSTALL_DIRECTORY=/usr/local/bin SETTINGS_FILE=~/.llm-translator-rust/settings.toml BUILD_ENV_PATH=build_env.toml make
+- `make install` copies `settings.toml` to `baseDirectory` if it does not exist.
 
 ## Quickstart
 
@@ -158,7 +161,7 @@ Hinweise:
 ## Overwrite mode (--overwrite)
 
 `--overwrite` schreibt die Ergebnisse direkt zurück in die über `--data` angegebenen Dateien/Verzeichnisse.
-Vor dem Schreiben wird jede Datei nach `~/.llm-translated-rust/backup` gesichert.
+Vor dem Schreiben wird jede Datei nach `~/.llm-translator-rust/backup` gesichert.
 Aufbewahrung über `settings.toml` `[system].backup_ttl_days` (Standard: 30 Tage).
 
 ```bash
@@ -404,7 +407,7 @@ eng = "英語"
 |  | `--force` | Unsichere MIME als Text behandeln |  |
 |  | `--debug-ocr` | OCR‑Debug‑Overlays/JSON ausgeben |  |
 |  | `--whisper-model` | Whisper‑Modellname oder Pfad |  |
-|  | `--overwrite` | Dateien überschreiben (Backup `~/.llm-translated-rust/backup`) |  |
+|  | `--overwrite` | Dateien überschreiben (Backup `~/.llm-translator-rust/backup`) |  |
 |  | `--directory-translation-threads` | Parallelität für Verzeichnisse |  |
 |  | `--ignore-translation-file` | Ignore‑Muster (gitignore‑ähnlich) |  |
 | `-o` | `--out` | Ausgabepfad |  |

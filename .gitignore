@@ -22,3 +22,6 @@ target
 
 settings.local.toml
 debug/
+debug_translated/
+build_env.toml
+build/target/

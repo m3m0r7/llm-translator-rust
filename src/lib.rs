@@ -8,17 +8,18 @@ use tokio::sync::Mutex;
 use tracing::{info, warn};
 
 pub mod attachments;
-pub mod correction;
-pub mod ext;
-pub mod server;
 mod backup;
+mod build_env;
+pub mod correction;
 pub mod data;
 pub mod dictionary;
+pub mod ext;
 pub mod languages;
 pub mod logging;
 mod model_registry;
 pub mod ocr;
 mod providers;
+pub mod server;
 pub mod settings;
 mod translation_ignore;
 pub mod translations;
@@ -140,9 +141,8 @@ async fn run_with_loaded_settings(
             Err(err) => {
                 let mime_hint = config.data_mime.as_deref().unwrap_or("auto");
                 if mime_hint.eq_ignore_ascii_case("auto") {
-                    let bytes = fs::read(path).with_context(|| {
-                        format!("failed to read data file: {}", path.display())
-                    })?;
+                    let bytes = fs::read(path)
+                        .with_context(|| format!("failed to read data file: {}", path.display()))?;
                     let name = path
                         .file_name()
                         .and_then(|value| value.to_str())
@@ -768,9 +768,7 @@ async fn process_dir_file<P: Provider + Clone>(
             if mime_hint.eq_ignore_ascii_case("auto") {
                 let bytes = match fs::read(&path) {
                     Ok(value) => value,
-                    Err(read_err) => {
-                        return copy_or_skip(&path, &shared, Some(read_err.into()))
-                    }
+                    Err(read_err) => return copy_or_skip(&path, &shared, Some(read_err.into())),
                 };
                 let name = path
                     .file_name()
@@ -781,11 +779,11 @@ async fn process_dir_file<P: Provider + Clone>(
                     mime: data::OCTET_STREAM_MIME.to_string(),
                     name,
                 };
-                let detection = match attachments::detect_mime_with_llm(&attachment, &translator).await
-                {
-                    Ok(value) => value,
-                    Err(detect_err) => return copy_or_skip(&path, &shared, Some(detect_err)),
-                };
+                let detection =
+                    match attachments::detect_mime_with_llm(&attachment, &translator).await {
+                        Ok(value) => value,
+                        Err(detect_err) => return copy_or_skip(&path, &shared, Some(detect_err)),
+                    };
                 let normalized = data::normalize_mime_hint(&detection.mime);
                 if detection.confident {
                     if let Some(mime) = normalized {

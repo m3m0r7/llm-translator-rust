@@ -9,6 +9,7 @@ use whisper_rs::{
     get_lang_str, FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters,
 };
 
+use crate::build_env;
 use crate::data;
 use crate::languages::{map_lang_for_espeak, map_lang_for_whisper};
 use crate::providers::Provider;
@@ -464,15 +465,7 @@ async fn ensure_whisper_model(model: &str) -> Result<PathBuf> {
 
 fn default_model_path(model: &str) -> Result<PathBuf> {
     let file = format!("ggml-{}.bin", model);
-    if let Ok(home) = std::env::var("HOME") {
-        let home = home.trim();
-        if !home.is_empty() {
-            return Ok(Path::new(home)
-                .join(".llm-translator-rust/.cache/whisper")
-                .join(file));
-        }
-    }
-    Ok(Path::new(".llm-translator-rust/.cache/whisper").join(file))
+    Ok(build_env::whisper_dir().join(file))
 }
 
 fn whisper_model_url(model: &str) -> Result<String> {

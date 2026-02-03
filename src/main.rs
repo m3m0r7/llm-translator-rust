@@ -90,7 +90,7 @@ struct Cli {
     #[arg(long = "debug-ocr")]
     debug_ocr: bool,
 
-    /// Overwrite input files in place (backups stored in ~/.llm-translated-rust/backup)
+    /// Overwrite input files in place (backups stored in baseDirectory/backup, default: ~/.llm-translator-rust/backup)
     #[arg(long = "overwrite", requires = "data")]
     overwrite: bool,
 

@@ -85,9 +85,13 @@ pub(crate) async fn translate_request(
     let key = providers::resolve_key(selection.provider, config.key.as_deref())
         .map_err(|err| ServerError::bad_request(err.to_string()))?;
 
-    let model = resolve_model(selection.provider, selection.requested_model.as_deref(), &key)
-        .await
-        .map_err(|err| ServerError::bad_request(err.to_string()))?;
+    let model = resolve_model(
+        selection.provider,
+        selection.requested_model.as_deref(),
+        &key,
+    )
+    .await
+    .map_err(|err| ServerError::bad_request(err.to_string()))?;
     let provider = providers::build_provider(selection.provider, key, model.clone());
     let translator = Translator::new(provider, settings.clone(), registry);
     let options = TranslateOptions {
@@ -167,10 +171,7 @@ pub(crate) async fn translate_request(
 
 fn config_from_request(request: &ServerRequest) -> Config {
     Config {
-        lang: request
-            .lang
-            .clone()
-            .unwrap_or_else(|| "en".to_string()),
+        lang: request.lang.clone().unwrap_or_else(|| "en".to_string()),
         model: request.model.clone(),
         key: request.key.clone(),
         formal: request
@@ -286,7 +287,11 @@ async fn translate_directory<P: providers::Provider + Clone>(
                     &translator,
                 )
                 .await?;
-                let debug_src = if config.debug_ocr { Some(file.as_path()) } else { None };
+                let debug_src = if config.debug_ocr {
+                    Some(file.as_path())
+                } else {
+                    None
+                };
                 let output = attachments::translate_attachment(
                     &attachment,
                     ocr_languages,
@@ -303,8 +308,12 @@ async fn translate_directory<P: providers::Provider + Clone>(
                     Some(value) => value,
                     None => return Ok(None),
                 };
-                let content =
-                    content_from_attachment(&attachment, &output, config.force_translation, tmp_dir)?;
+                let content = content_from_attachment(
+                    &attachment,
+                    &output,
+                    config.force_translation,
+                    tmp_dir,
+                )?;
                 Ok(Some(content))
             }
         })
@@ -395,8 +404,8 @@ fn content_from_attachment(
         });
     }
 
-    let translated_path = write_temp_file(&output.bytes, &output.mime, &tmp_dir)
-        .map_err(ServerError::from)?;
+    let translated_path =
+        write_temp_file(&output.bytes, &output.mime, &tmp_dir).map_err(ServerError::from)?;
     Ok(ServerContent {
         mime: output.mime.clone(),
         format: "path".to_string(),

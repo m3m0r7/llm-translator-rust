@@ -150,11 +150,10 @@ pub fn render_mime_prompt(
     let template = load_prompt_template("mime_prompt.tera")?;
     let mut context = TeraContext::new();
     context.insert("tool_name", tool_name);
-    let mimes: Vec<&str> = supported_mimes.iter().copied().collect();
+    let mimes: Vec<&str> = supported_mimes.to_vec();
     context.insert("supported_mimes", &mimes);
     context.insert("data_name", &data_name);
-    Tera::one_off(&template, &context, false)
-        .with_context(|| "failed to render mime prompt")
+    Tera::one_off(&template, &context, false).with_context(|| "failed to render mime prompt")
 }
 
 pub fn parse_tool_args(

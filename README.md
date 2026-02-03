@@ -49,7 +49,8 @@ cargo install --git https://github.com/m3m0r7/llm-translator-rust --locked
 ```bash
 git clone https://github.com/m3m0r7/llm-translator-rust
 cd llm-translator-rust
-make install
+make
+sudo make install
 ```
 
 Binary will be available at:
@@ -60,7 +61,10 @@ Binary will be available at:
 Notes:
 - macOS/Linux default: `/usr/local/bin` (use `sudo make install` if needed)
 - Windows (MSYS/Git Bash): `%USERPROFILE%/.cargo/bin`
-- `make install` also copies `settings.toml` to `~/.llm-translator-rust/settings.toml` if it does not exist.
+- `make` writes `build_env.toml` and embeds it into the binary (portable builds don’t need the file at runtime).
+- You can override paths via env vars passed to `make`, e.g.
+  `BASE_DIRECTORY=~/.llm-translator-rust BIN_DIRECTORY=target/release INSTALL_DIRECTORY=/usr/local/bin SETTINGS_FILE=~/.llm-translator-rust/settings.toml BUILD_ENV_PATH=build_env.toml make`
+- `make install` copies `settings.toml` to `baseDirectory` if it does not exist.
 
 ## Quickstart
 
@@ -160,7 +164,7 @@ Notes:
 ## Overwrite mode (--overwrite)
 
 `--overwrite` writes results in place for files or directories passed via `--data`.
-Before writing, each file is backed up to `~/.llm-translated-rust/backup`.
+Before writing, each file is backed up to `~/.llm-translator-rust/backup`.
 Retention is controlled by `settings.toml` `[system].backup_ttl_days` (default: 30).
 
 ```bash
@@ -406,7 +410,7 @@ eng = "英語"
 |  | `--force` | Force translation when mime detection is uncertain (treat as text) |  |
 |  | `--debug-ocr` | Output OCR debug overlays/JSON for attachments |  |
 |  | `--whisper-model` | Whisper model name or path |  |
-|  | `--overwrite` | Overwrite input files in place (backups stored in `~/.llm-translated-rust/backup`) |  |
+|  | `--overwrite` | Overwrite input files in place (backups stored in `~/.llm-translator-rust/backup`) |  |
 |  | `--directory-translation-threads` | Directory translation concurrency |  |
 |  | `--ignore-translation-file` | Ignore patterns for directory translation (gitignore-like) |  |
 | `-o` | `--out` | Output path for translated file or directory |  |

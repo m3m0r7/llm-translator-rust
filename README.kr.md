@@ -49,7 +49,8 @@ cargo install --git https://github.com/m3m0r7/llm-translator-rust --locked
 ```bash
 git clone https://github.com/m3m0r7/llm-translator-rust
 cd llm-translator-rust
-make install
+make
+sudo make install
 ```
 
 바이너리는 다음 경로에 있습니다:
@@ -61,7 +62,9 @@ make install
 참고:
 - macOS/Linux 기본 경로: `/usr/local/bin`(필요 시 `sudo make install`)
 - Windows(MSYS/Git Bash): `%USERPROFILE%/.cargo/bin`
-- `make install`은 `~/.llm-translator-rust/settings.toml`이 없으면 `settings.toml`을 복사합니다
+- make writes build_env.toml and embeds it into the binary (portable builds don't need the file at runtime).
+- Override paths via env vars passed to make, e.g. BASE_DIRECTORY=~/.llm-translator-rust BIN_DIRECTORY=target/release INSTALL_DIRECTORY=/usr/local/bin SETTINGS_FILE=~/.llm-translator-rust/settings.toml BUILD_ENV_PATH=build_env.toml make
+- `make install` copies `settings.toml` to `baseDirectory` if it does not exist.
 
 ## Quickstart
 
@@ -158,7 +161,7 @@ llm-translator-rust --data ./docs -l ja
 ## Overwrite mode (--overwrite)
 
 `--overwrite`는 `--data`로 지정된 파일/디렉터리를 제자리에서 덮어씁니다.
-쓰기 전 백업은 `~/.llm-translated-rust/backup`에 저장됩니다.
+쓰기 전 백업은 `~/.llm-translator-rust/backup`에 저장됩니다.
 보관 기간은 `settings.toml`의 `[system].backup_ttl_days`로 설정됩니다(기본 30일).
 
 ```bash
@@ -404,7 +407,7 @@ eng = "英語"
 |  | `--force` | MIME 판정이 불확실할 때 텍스트로 처리 |  |
 |  | `--debug-ocr` | OCR 디버그 오버레이/JSON 출력 |  |
 |  | `--whisper-model` | Whisper 모델 이름/경로 |  |
-|  | `--overwrite` | 파일 덮어쓰기(백업 `~/.llm-translated-rust/backup`) |  |
+|  | `--overwrite` | 파일 덮어쓰기(백업 `~/.llm-translator-rust/backup`) |  |
 |  | `--directory-translation-threads` | 디렉터리 번역 병렬 수 |  |
 |  | `--ignore-translation-file` | 제외 패턴(gitignore 스타일) |  |
 | `-o` | `--out` | 출력 경로 |  |

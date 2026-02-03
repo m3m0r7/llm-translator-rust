@@ -49,7 +49,8 @@ cargo install --git https://github.com/m3m0r7/llm-translator-rust --locked
 ```bash
 git clone https://github.com/m3m0r7/llm-translator-rust
 cd llm-translator-rust
-make install
+make
+sudo make install
 ```
 
 Il binario sarà disponibile in:
@@ -60,7 +61,9 @@ Il binario sarà disponibile in:
 Note:
 - macOS/Linux predefinito: `/usr/local/bin` (usa `sudo make install` se necessario)
 - Windows (MSYS/Git Bash): `%USERPROFILE%/.cargo/bin`
-- `make install` copia anche `settings.toml` in `~/.llm-translator-rust/settings.toml` se non esiste.
+- make writes build_env.toml and embeds it into the binary (portable builds don't need the file at runtime).
+- Override paths via env vars passed to make, e.g. BASE_DIRECTORY=~/.llm-translator-rust BIN_DIRECTORY=target/release INSTALL_DIRECTORY=/usr/local/bin SETTINGS_FILE=~/.llm-translator-rust/settings.toml BUILD_ENV_PATH=build_env.toml make
+- `make install` copies `settings.toml` to `baseDirectory` if it does not exist.
 
 ## Quickstart
 
@@ -160,7 +163,7 @@ Note:
 ## Overwrite mode (--overwrite)
 
 `--overwrite` scrive i risultati in loco per file o directory passati tramite `--data`.
-Prima di scrivere, ogni file viene salvato in `~/.llm-translated-rust/backup`.
+Prima di scrivere, ogni file viene salvato in `~/.llm-translator-rust/backup`.
 La conservazione è controllata da `settings.toml` `[system].backup_ttl_days` (predefinito: 30).
 
 ```bash
@@ -406,7 +409,7 @@ eng = "英語"
 |  | `--force` | Forza la traduzione quando il rilevamento mime è incerto (tratta come testo) |  |
 |  | `--debug-ocr` | Output overlay/JSON di debug OCR per gli allegati |  |
 |  | `--whisper-model` | Nome o percorso del modello Whisper |  |
-|  | `--overwrite` | Sovrascrivi i file di input in loco (backup in `~/.llm-translated-rust/backup`) |  |
+|  | `--overwrite` | Sovrascrivi i file di input in loco (backup in `~/.llm-translator-rust/backup`) |  |
 |  | `--directory-translation-threads` | Concorrenza traduzione directory |  |
 |  | `--ignore-translation-file` | Pattern di esclusione per la traduzione directory (simile a gitignore) |  |
 | `-o` | `--out` | Percorso di output per file o directory tradotti |  |

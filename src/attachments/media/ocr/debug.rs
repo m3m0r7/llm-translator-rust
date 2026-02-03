@@ -1,6 +1,8 @@
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
+use crate::build_env;
+
 #[derive(Debug, Clone)]
 pub(crate) struct OcrDebugConfig {
     output_dir: PathBuf,
@@ -63,12 +65,7 @@ pub(crate) fn build_ocr_debug_config(
 }
 
 fn default_debug_dir() -> Result<PathBuf> {
-    if let Ok(home) = std::env::var("HOME") {
-        if !home.trim().is_empty() {
-            return Ok(Path::new(&home).join(".llm-translator-rust/.cache/ocr"));
-        }
-    }
-    Ok(Path::new(".llm-translator-rust/.cache/ocr").to_path_buf())
+    Ok(build_env::ocr_dir())
 }
 
 fn sanitize_filename_component(value: &str) -> String {

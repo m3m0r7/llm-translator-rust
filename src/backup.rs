@@ -4,7 +4,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const BACKUP_DIR_NAME: &str = ".llm-translated-rust/backup";
+use crate::build_env;
+
 const META_FILE_NAME: &str = "meta.json";
 const SECONDS_PER_DAY: u64 = 86_400;
 
@@ -23,13 +24,7 @@ struct BackupMeta {
 }
 
 pub(crate) fn backup_dir() -> PathBuf {
-    if let Ok(home) = std::env::var("HOME") {
-        let home = home.trim();
-        if !home.is_empty() {
-            return Path::new(home).join(BACKUP_DIR_NAME);
-        }
-    }
-    Path::new(BACKUP_DIR_NAME).to_path_buf()
+    build_env::backup_dir()
 }
 
 pub(crate) fn backup_file(src: &Path, ttl_days: u64) -> Result<BackupEntry> {

@@ -15,16 +15,16 @@ use crate::providers::{Provider, ProviderUsage};
 use crate::{TranslateOptions, Translator};
 
 use cache::TranslationCache;
+use code::{translate_javascript, translate_mermaid, translate_tsx, translate_typescript};
 use media::{
     build_ocr_debug_config, translate_audio, translate_image_with_cache, translate_pdf,
     ImageTranslateRequest,
 };
+pub use mime_detect::{detect_mime_with_llm, MimeDetection};
 use office::{translate_office_zip, OfficeKind};
 use text::{
     translate_html, translate_json, translate_markdown, translate_po, translate_xml, translate_yaml,
 };
-use code::{translate_javascript, translate_mermaid, translate_tsx, translate_typescript};
-pub use mime_detect::{detect_mime_with_llm, MimeDetection};
 
 pub struct AttachmentTranslation {
     pub bytes: Vec<u8>,
@@ -33,6 +33,7 @@ pub struct AttachmentTranslation {
     pub usage: Option<ProviderUsage>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn translate_attachment<P: Provider + Clone>(
     data: &data::DataAttachment,
     ocr_languages: &str,
@@ -161,9 +162,7 @@ pub async fn translate_attachment<P: Provider + Clone>(
             let text = match std::str::from_utf8(&data.bytes) {
                 Ok(value) => value.to_string(),
                 Err(_) if force_translation => String::from_utf8_lossy(&data.bytes).to_string(),
-                Err(err) => {
-                    return Err(anyhow!("failed to decode text file as UTF-8: {}", err))
-                }
+                Err(err) => return Err(anyhow!("failed to decode text file as UTF-8: {}", err)),
             };
             let exec = translator.exec(text.as_str(), options.clone()).await?;
             let bytes = exec.text.into_bytes();
