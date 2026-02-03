@@ -315,7 +315,7 @@ Translated:
 - PDF 출력은 래스터라이즈됩니다(텍스트 선택 불가).
 
 Provider defaults:
-- OpenAI: `openai:gpt-5.1`
+- OpenAI: `openai:gpt-5.2`
 - Gemini: `gemini:gemini-2.5-flash`
 - Claude: `claude:claude-sonnet-4-5-20250929`
 

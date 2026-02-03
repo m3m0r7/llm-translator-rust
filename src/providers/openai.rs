@@ -13,7 +13,7 @@ use super::{
 };
 
 const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
-pub(crate) const DEFAULT_MODEL: &str = "gpt-4o-mini";
+pub(crate) const DEFAULT_MODEL: &str = "gpt-5.2";
 
 #[derive(Debug, Clone)]
 pub struct OpenAI {

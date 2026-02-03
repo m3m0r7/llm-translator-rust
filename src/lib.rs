@@ -1461,7 +1461,7 @@ fn is_model_compatible(provider: ProviderKind, model: &str) -> bool {
 
 fn preferred_default_model(provider: ProviderKind) -> Option<&'static str> {
     match provider {
-        ProviderKind::OpenAI => Some("gpt-5.1"),
+        ProviderKind::OpenAI => Some("gpt-5.2"),
         ProviderKind::Gemini => Some("gemini-2.5-flash"),
         ProviderKind::Claude => Some("claude-sonnet-4-5-20250929"),
     }

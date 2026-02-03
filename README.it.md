@@ -318,7 +318,7 @@ Tradotto:
 - L'output PDF è rasterizzato (il testo non è più selezionabile).
 
 Provider defaults:
-- OpenAI: `openai:gpt-5.1`
+- OpenAI: `openai:gpt-5.2`
 - Gemini: `gemini:gemini-2.5-flash`
 - Claude: `claude:claude-sonnet-4-5-20250929`
 
