@@ -331,7 +331,7 @@ async fn run_with_loaded_settings(
                     attachment.mime = data::TEXT_MIME.to_string();
                 } else {
                     return Err(anyhow!(
-                        "unable to determine supported mime for '{}' (detected '{}'); use --force-translation to treat as text",
+                        "unable to determine supported mime for '{}' (detected '{}'); use --force to treat as text",
                         attachment
                             .name
                             .as_deref()
@@ -343,7 +343,7 @@ async fn run_with_loaded_settings(
                 attachment.mime = data::TEXT_MIME.to_string();
             } else {
                 return Err(anyhow!(
-                    "unable to determine mime for '{}' (low confidence); use --force-translation to treat as text",
+                    "unable to determine mime for '{}' (low confidence); use --force to treat as text",
                     attachment
                         .name
                         .as_deref()

@@ -1,8 +1,8 @@
 # llm-translator-rust
 
-English | [日本語](README.ja.md) | [中文](README.cn.md) | [Français](README.fr.md) | [Deutsch](README.ge.md) | [Italiano](README.it.md) | [한국어](README.kr.md) | [Русский](README.ru.md) | [UK English](README.uk.md)
+UK English | [English](README.md) | [日本語](README.ja.md) | [中文](README.cn.md) | [Français](README.fr.md) | [Deutsch](README.ge.md) | [Italiano](README.it.md) | [한국어](README.kr.md) | [Русский](README.ru.md)
 
-A small CLI translator that uses LLM tool calls and always reads from stdin.
+A proper little CLI translator that leans on LLM tool‑calls and always reads from stdin — no faff, no fluff.
 
 ## Contents
 
@@ -22,18 +22,18 @@ A small CLI translator that uses LLM tool calls and always reads from stdin.
 
 ## Overview
 
-- Reads input from stdin and prints the translated text.
-- Uses tool-calling JSON only (no free-form output).
+- Reads input from stdin and spits out the translation, clean and tidy.
+- Tool‑calling JSON only — no free‑form waffle.
 - Providers: OpenAI, Gemini, Claude.
-- Model list is fetched via each provider's Models API and cached for 24 hours.
+- Model list is fetched via each provider’s Models API and cached for 24 hours.
 
 ## Installation
 
-Choose one of the following:
+Pick your poison:
 
 ### 1) Download from GitHub Releases
 
-Release artifacts are available on the Releases page:
+Release artefacts live here:
 [GitHub Releases](https://github.com/m3m0r7/llm-translator-rust/releases/latest)
 
 Each asset is named `llm-translator-rust-<os>-<arch>` (e.g. `llm-translator-rust-macos-aarch64`).
@@ -52,15 +52,16 @@ cd llm-translator-rust
 make install
 ```
 
-Binary will be available at:
+Binary ends up at:
 
 ```
 ./target/release/llm-translator-rust
 ```
+
 Notes:
-- macOS/Linux default: `/usr/local/bin` (use `sudo make install` if needed)
+- macOS/Linux default: `/usr/local/bin` (use `sudo make install` if you must)
 - Windows (MSYS/Git Bash): `%USERPROFILE%/.cargo/bin`
-- `make install` also copies `settings.toml` to `~/.llm-translator-rust/settings.toml` if it does not exist.
+- `make install` also drops `settings.toml` into `~/.llm-translator-rust/settings.toml` if it doesn’t exist
 
 ## Quickstart
 
@@ -145,22 +146,19 @@ llm-translator-rust --data ./docs -l ja
 
 Notes:
 - `--data-mime` applies to every file in the directory; leave it as `auto` for mixed file types.
-- Files that cannot be read or whose mime cannot be detected are reported as failures; files that
-  are detected but not supported by the translator are skipped.
-- Use `--force` to treat unknown/low-confidence detections as text.
-- Directory translation runs concurrently (default 3 threads). Use
-  `--directory-translation-threads` or `settings.toml` to change it.
-- Files can be excluded with `--ignore-translation-file` or an ignore file
-  (default: `.llm-translation-rust-ignore`, configurable via `settings.toml`).
+- Files that can’t be read or whose mime can’t be detected are reported as failures; unsupported types are skipped.
+- Use `--force` to treat unknown/low‑confidence detections as text.
+- Directory translation runs concurrently (default 3 threads). Use `--directory-translation-threads` or `settings.toml`.
+- Exclude files with `--ignore-translation-file` or an ignore file (default: `.llm-translation-rust-ignore`).
   Patterns follow `.gitignore` rules (`*`, `**`, `!`, comments).
-- Ignore rules apply only when `--data` points to a directory.
-- Use `--out` to choose the output directory for directory translation.
-- When a directory translation fails, the original file is copied to the output directory.
+- Ignore rules apply only when `--data` is a directory.
+- Use `--out` to choose the output directory.
+- If a directory translation fails, the original file is copied to the output directory.
 
 ## Overwrite mode (--overwrite)
 
 `--overwrite` writes results in place for files or directories passed via `--data`.
-Before writing, each file is backed up to `~/.llm-translated-rust/backup`.
+Each file is backed up to `~/.llm-translated-rust/backup` before writing.
 Retention is controlled by `settings.toml` `[system].backup_ttl_days` (default: 30).
 
 ```bash
@@ -171,7 +169,7 @@ llm-translator-rust --data ./slide.pdf --overwrite -l en
 ## Output path (--out)
 
 `--out` sets the output path for file or directory translations.
-It cannot be used with `--overwrite`.
+It can’t be used with `--overwrite`.
 
 ```bash
 llm-translator-rust --data ./docs -l ja --out ./outdir
@@ -180,7 +178,7 @@ llm-translator-rust --data ./slide.pdf -l en --out ./translated.pdf
 
 ## Dictionary (--pos)
 
-`--pos` returns dictionary-style details for the input term.
+`--pos` returns dictionary‑style details for the input term.
 
 Usage:
 
@@ -211,7 +209,7 @@ Example output (labels follow the source language):
 
 ## Correction (--correction)
 
-`--correction` proofreads the input and points out corrections in the source language.
+`--correction` proofreads the input and calls out corrections in the source language.
 
 Usage:
 
@@ -229,20 +227,19 @@ Correction reasons:
 - English requires a/an before a countable noun
 ```
 
-- Labels are localized to the source language.
-- `Reading` is the translation’s pronunciation rendered in the source language’s typical script
-  (e.g., Japanese=katakana, Chinese=pinyin with tone marks, Korean=hangul).
+- Labels are localised to the source language.
+- `Reading` is the translation’s pronunciation in the source language’s usual script.
 - `Alternatives` lists other plausible translations with readings.
 - `Usage` and example source sentences are in the source language.
 - Examples include the translation or one of the alternatives.
 
 ## Audio translation
 
-Audio files are transcribed with `whisper-rs`, translated by the LLM, then re-synthesized.
+Audio files are transcribed with `whisper-rs`, translated by the LLM, then re‑synthesised.
 
 - Supported audio: mp3, wav, m4a, flac, ogg
 - Requires `ffmpeg`
-- Requires a Whisper model (auto-downloaded on first run)
+- Requires a Whisper model (auto‑downloaded on first run)
 - TTS uses macOS `say` or Linux `espeak`
 
 Choose a model:
@@ -253,7 +250,7 @@ llm-translator-rust --whisper-model small -d ./voice.mp3 -l en
 ```
 
 You can also set `LLM_TRANSLATOR_WHISPER_MODEL` to a model name or file path.
-`settings.toml` `[whisper] model` or `--whisper-model` overrides this.
+`settings.toml` `[whisper] model` or `--whisper-model` takes priority.
 
 ## Dependencies
 
@@ -289,30 +286,30 @@ Translated:
 
 - Default provider priority: OpenAI → Gemini → Claude (first API key found).
 - `-m/--model` accepts:
-  - Provider only: `openai`, `gemini`, `claude` (uses provider defaults below, if available)
+  - Provider only: `openai`, `gemini`, `claude`
   - Provider + model: `openai:MODEL_ID`
-  - When specifying a model, always include the provider prefix.
-- Defaults use provider defaults below; if unavailable, the first chat-capable model is used.
+  - Always include the provider prefix when specifying a model.
+- Defaults use provider defaults below; if unavailable, the first chat‑capable model is used.
 - Source/target languages use ISO 639-1 or ISO 639-2/3 codes (e.g., `ja`, `en`, `jpn`, `eng`). Source can be `auto`.
-- For Chinese variants, use `zho-hans` (Simplified) or `zho-hant` (Traditional).
-- Language validation uses the ISO 639 list from Wikipedia: https://en.wikipedia.org/wiki/List_of_ISO_639_language_codes
+- Chinese variants: `zho-hans` (Simplified) or `zho-hant` (Traditional).
+- Language validation uses Wikipedia’s ISO 639 list: https://en.wikipedia.org/wiki/List_of_ISO_639_language_codes
 - Model list is fetched from each provider’s Models API and cached for 24 hours.
 - Cache path:
   - `~/.llm-translator/.cache/meta.json` (fallback: `./.llm-translator/.cache/meta.json`)
 - `--show-models-list` prints the cached list as `provider:model` per line.
 - `--show-whisper-models` prints available whisper model names.
-- `--pos` returns dictionary-style details (translation + reading, POS, alternatives, inflections, usage/examples).
+- `--pos` returns dictionary‑style details.
 - `--correction` returns proofreading corrections and reasons in the source language.
-- `--whisper-model` selects the whisper model name or path for audio transcription.
-- When `--model` is omitted, `lastUsingModel` in `meta.json` is preferred (falls back to default resolution if missing or invalid).
-- Histories are stored in `meta.json`. Dest files are written to `~/.llm-translator-rust/.cache/dest/<md5>`.
-- Image/PDF attachments use OCR (tesseract), normalize OCR text with LLMs, and re-render a numbered overlay plus a footer list.
-- Office files (docx/xlsx/pptx) are rewritten by translating text nodes in the XML.
-- Output mime matches the input mime (e.g. png stays png, pdf stays pdf).
+- `--whisper-model` selects the whisper model name or path.
+- When `--model` is omitted, `lastUsingModel` in `meta.json` is preferred.
+- Histories are stored in `meta.json`. Dest files go to `~/.llm-translator-rust/.cache/dest/<md5>`.
+- Image/PDF attachments use OCR (tesseract), normalise OCR text with LLMs, and re‑render a numbered overlay + footer list.
+- Office files (docx/xlsx/pptx) are rewritten by translating text nodes in XML.
+- Output mime matches the input mime.
 - OCR languages are inferred from `--source-lang` and `--lang`.
 - Use `tesseract --list-langs` to see installed OCR language codes.
 - PDF OCR requires a PDF renderer (`mutool` or `pdftoppm` from poppler).
-- PDF output is rasterized (text is no longer selectable).
+- PDF output is rasterised (text is no longer selectable).
 
 Provider defaults:
 - OpenAI: `openai:gpt-5.1`
@@ -326,16 +323,16 @@ Provider model APIs:
 
 ## Settings
 
-Settings files are loaded with the following precedence (highest first):
+Settings files are loaded in this order (highest priority first):
 
 1. `~/.llm-translator-rust/settings.local.toml`
 2. `~/.llm-translator-rust/settings.toml`
 3. `./settings.local.toml`
 4. `./settings.toml`
 
-You can also pass `-r/--read-settings` to load an additional local TOML file (highest priority).
+Use `-r/--read-settings` to load an additional local TOML file (highest priority).
 
-`settings.toml` uses the following format:
+`settings.toml` format:
 `system.languages` should be ISO 639-3 codes.
 
 ```toml
@@ -362,7 +359,8 @@ normalize = true
 
 ## Language Packs
 
-Language packs live in `src/languages/<iso-639-3>.toml`. The first entry in `system.languages` is used for label display in `--show-enabled-languages`.
+Language packs live in `src/languages/<iso-639-3>.toml`.
+The first entry in `system.languages` is used for label display in `--show-enabled-languages`.
 
 Example (Japanese):
 
@@ -392,7 +390,7 @@ eng = "英語"
 | `-L` | `--source-lang` | Source language (ISO 639-1/2/3 or `auto`) | `auto` |
 | `-s` | `--slang` | Include slang keywords when appropriate | `false` |
 | `-d` | `--data` | File attachment (image/doc/docx/pptx/xlsx/pdf/txt/md/html/json/yaml/po/xml/js/ts/tsx/mermaid/audio) |  |
-| `-M` | `--data-mime` | Mime type for `--data` (or stdin) (`auto`, `image/*`, `pdf`, `doc`, `docx`, `docs`, `pptx`, `xlsx`, `txt`, `md`, `markdown`, `html`, `json`, `yaml`, `po`, `xml`, `js`, `ts`, `tsx`, `mermaid`, `mp3`, `wav`, `m4a`, `flac`, `ogg`) | `auto` |
+| `-M` | `--data-mime` | Mime type for `--data` (or stdin) | `auto` |
 |  | `--with-commentout` | Translate comment-out text (HTML/YAML/PO) |  |
 |  | `--show-enabled-languages` | Show enabled translation languages |  |
 |  | `--show-enabled-styles` | Show enabled style keys |  |

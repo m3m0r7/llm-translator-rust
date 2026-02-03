@@ -95,7 +95,7 @@ struct Cli {
     overwrite: bool,
 
     /// Force translation when mime detection is uncertain (treat as text)
-    #[arg(long = "force-translation")]
+    #[arg(long = "force", alias = "force-translation")]
     force_translation: bool,
 
     /// Directory translation threads (overrides settings)
@@ -643,7 +643,7 @@ mod tests {
             "--with-commentout",
             "--debug-ocr",
             "--overwrite",
-            "--force-translation",
+            "--force",
             "--directory-translation-threads",
             "5",
             "--ignore-translation-file",

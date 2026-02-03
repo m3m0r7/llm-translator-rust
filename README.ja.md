@@ -1,6 +1,6 @@
 # llm-translator-rust
 
-[English](README.md) | 日本語
+[English](README.md) | 日本語 | [中文](README.cn.md) | [Français](README.fr.md) | [Deutsch](README.ge.md) | [Italiano](README.it.md) | [한국어](README.kr.md) | [Русский](README.ru.md) | [UK English](README.uk.md)
 
 LLM のツール呼び出し (JSON) を使った、stdin 入力専用の翻訳 CLI です。
 
@@ -146,7 +146,7 @@ llm-translator-rust --data ./docs -l ja
 補足:
 - `--data-mime` はディレクトリ内の全ファイルに適用されます。混在する場合は `auto` のままにしてください。
 - 読み込み不可や MIME 判定失敗は failure として報告され、対応外の形式は skip されます。
-- 判定が不確かな場合は `--force-translation` でテキスト扱いにできます。
+- 判定が不確かな場合は `--force` でテキスト扱いにできます。
 - ディレクトリ翻訳は並列実行します（既定 3 スレッド）。`--directory-translation-threads` または
   `settings.toml` で変更できます。
 - `--ignore-translation-file` または無視ファイル（既定: `.llm-translation-rust-ignore`、
@@ -402,7 +402,7 @@ eng = "英語"
 |  | `--show-histories` | 翻訳履歴を表示 |  |
 |  | `--with-using-tokens` | トークン使用量を付加 |  |
 |  | `--with-using-model` | 使用モデル名を付加 |  |
-|  | `--force-translation` | MIME 判定が不確かな場合でもテキスト扱いで翻訳 |  |
+|  | `--force` | MIME 判定が不確かな場合でもテキスト扱いで翻訳 |  |
 |  | `--debug-ocr` | OCR デバッグ用の bbox 画像/JSON を出力 |  |
 |  | `--whisper-model` | Whisper モデル名またはパス |  |
 |  | `--overwrite` | 入力ファイル/ディレクトリを上書き（バックアップは `~/.llm-translated-rust/backup`） |  |
