@@ -16,6 +16,8 @@ A small CLI translator that uses LLM tool calls and always reads from stdin.
 - [Language Packs](#language-packs)
 - [Environment variables](#environment-variables)
 - [Options](#options)
+- [Server mode](#server-mode)
+- [FFI (C ABI)](#ffi-c-abi)
 - [Notes](#notes)
 
 ## Overview
@@ -112,7 +114,7 @@ echo 猫 | llm-translator-rust --pos -l en
 # File translation
 cat foobar.txt | llm-translator-rust -l en
 
-# File attachment translation (image/doc/docx/pptx/xlsx/pdf/txt/md/audio)
+# File attachment translation (image/doc/docx/pptx/xlsx/pdf/txt/md/html/json/yaml/po/xml/js/ts/tsx/mermaid/audio)
 llm-translator-rust --data ./slides.pptx --data-mime pptx -l en
 llm-translator-rust --data ./scan.png -l ja
 llm-translator-rust --data ./voice.mp3 -l en
@@ -145,6 +147,7 @@ Notes:
 - `--data-mime` applies to every file in the directory; leave it as `auto` for mixed file types.
 - Files that cannot be read or whose mime cannot be detected are reported as failures; files that
   are detected but not supported by the translator are skipped.
+- Use `--force-translation` to treat unknown/low-confidence detections as text.
 - Directory translation runs concurrently (default 3 threads). Use
   `--directory-translation-threads` or `settings.toml` to change it.
 - Files can be excluded with `--ignore-translation-file` or an ignore file
@@ -204,6 +207,26 @@ Example output (labels follow the source language):
 - I have a cat. (私は猫を飼っています。)
 - The black cat is sleeping. (黒い猫が眠っています。)
 - Many people love cats. (多くの人が猫を愛しています。)
+```
+
+## Correction (--correction)
+
+`--correction` proofreads the input and points out corrections in the source language.
+
+Usage:
+
+```
+echo "This is pen" | llm-translator-rust --correction --source-lang en
+```
+
+Example output:
+
+```
+This is a pen
+        -
+
+Correction reasons:
+- English requires a/an before a countable noun
 ```
 
 - Labels are localized to the source language.
@@ -279,6 +302,7 @@ Translated:
 - `--show-models-list` prints the cached list as `provider:model` per line.
 - `--show-whisper-models` prints available whisper model names.
 - `--pos` returns dictionary-style details (translation + reading, POS, alternatives, inflections, usage/examples).
+- `--correction` returns proofreading corrections and reasons in the source language.
 - `--whisper-model` selects the whisper model name or path for audio transcription.
 - When `--model` is omitted, `lastUsingModel` in `meta.json` is preferred (falls back to default resolution if missing or invalid).
 - Histories are stored in `meta.json`. Dest files are written to `~/.llm-translator-rust/.cache/dest/<md5>`.
@@ -367,17 +391,19 @@ eng = "英語"
 | `-f` | `--formal` | Formality key (from `settings.toml` `[formally]`) | `formal` |
 | `-L` | `--source-lang` | Source language (ISO 639-1/2/3 or `auto`) | `auto` |
 | `-s` | `--slang` | Include slang keywords when appropriate | `false` |
-| `-d` | `--data` | File attachment (image/doc/docx/pptx/xlsx/pdf/txt/md/html/json/yaml/po/audio) |  |
-| `-M` | `--data-mime` | Mime type for `--data` (or stdin) (`auto`, `image/*`, `pdf`, `doc`, `docx`, `docs`, `pptx`, `xlsx`, `txt`, `md`, `markdown`, `html`, `json`, `yaml`, `po`, `mp3`, `wav`, `m4a`, `flac`, `ogg`) | `auto` |
+| `-d` | `--data` | File attachment (image/doc/docx/pptx/xlsx/pdf/txt/md/html/json/yaml/po/xml/js/ts/tsx/mermaid/audio) |  |
+| `-M` | `--data-mime` | Mime type for `--data` (or stdin) (`auto`, `image/*`, `pdf`, `doc`, `docx`, `docs`, `pptx`, `xlsx`, `txt`, `md`, `markdown`, `html`, `json`, `yaml`, `po`, `xml`, `js`, `ts`, `tsx`, `mermaid`, `mp3`, `wav`, `m4a`, `flac`, `ogg`) | `auto` |
 |  | `--with-commentout` | Translate comment-out text (HTML/YAML/PO) |  |
 |  | `--show-enabled-languages` | Show enabled translation languages |  |
 |  | `--show-enabled-styles` | Show enabled style keys |  |
 |  | `--show-models-list` | Show cached model list (provider:model) |  |
 |  | `--show-whisper-models` | Show available whisper model names |  |
 |  | `--pos` | Dictionary output (part of speech/inflections) |  |
+|  | `--correction` | Proofread input text and point out corrections |  |
 |  | `--show-histories` | Show translation histories |  |
 |  | `--with-using-tokens` | Append token usage to output |  |
 |  | `--with-using-model` | Append model name to output |  |
+|  | `--force-translation` | Force translation when mime detection is uncertain (treat as text) |  |
 |  | `--debug-ocr` | Output OCR debug overlays/JSON for attachments |  |
 |  | `--whisper-model` | Whisper model name or path |  |
 |  | `--overwrite` | Overwrite input files in place (backups stored in `~/.llm-translated-rust/backup`) |  |
@@ -387,7 +413,111 @@ eng = "英語"
 |  | `--verbose` | Verbose logging |  |
 | `-i` | `--interactive` | Interactive mode |  |
 | `-r` | `--read-settings` | Read extra settings TOML file |  |
+|  | `--server` | Start HTTP server (`ADDR` defaults to settings or `0.0.0.0:11223`) |  |
 | `-h` | `--help` | Show help |  |
+
+## Server mode
+
+Start the HTTP server:
+
+```bash
+llm-translator-rust --server
+llm-translator-rust --server 0.0.0.0:11223
+```
+
+Server settings are configurable in `settings.toml` under `[server]`:
+
+```toml
+[server]
+host = "0.0.0.0"
+port = 11223
+tmp_dir = "/tmp/llm-translator-rust"
+```
+
+Requests are JSON `POST /translate` (either `text` or `data` path):
+
+```json
+{
+  "text": "Hello",
+  "lang": "ja"
+}
+```
+
+```json
+{
+  "data": "/path/to/file-or-dir",
+  "data_mime": "auto",
+  "lang": "ja",
+  "force_translation": false
+}
+```
+
+Correction request:
+
+```json
+{
+  "text": "This is pen",
+  "correction": true,
+  "source_lang": "en"
+}
+```
+
+Response (text):
+
+```json
+{
+  "contents": [
+    {
+      "mime": "text/plain",
+      "format": "raw",
+      "original": "Hello",
+      "translated": "こんにちは"
+    }
+  ]
+}
+```
+
+Correction response (text):
+
+```json
+{
+  "contents": [
+    {
+      "mime": "text/plain",
+      "format": "raw",
+      "original": "This is pen",
+      "translated": "This is a pen",
+      "correction": {
+        "markers": "        -",
+        "reasons": ["English requires a/an before a countable noun"],
+        "source_language": "en"
+      }
+    }
+  ]
+}
+```
+
+Response (binary):
+
+```json
+{
+  "contents": [
+    {
+      "mime": "image/png",
+      "format": "path",
+      "translated": "/tmp/llm-translator-rust/llm-translator-xxxx.png"
+    }
+  ]
+}
+```
+
+When `data` is a directory, multiple entries are returned in `contents`.
+
+## FFI (C ABI)
+
+- C header is at `ext/llm_translator_rust.h`.
+- Functions return heap strings; free them with `llm_ext_free_string`.
+- When a call fails, retrieve a message with `llm_ext_last_error_message`.
 
 ## Notes
 

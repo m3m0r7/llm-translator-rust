@@ -16,6 +16,8 @@ LLM のツール呼び出し (JSON) を使った、stdin 入力専用の翻訳 C
 - [言語パック](#言語パック)
 - [環境変数](#環境変数)
 - [オプション](#オプション)
+- [サーバーモード](#サーバーモード)
+- [FFI (C ABI)](#ffi-c-abi)
 - [補足](#補足)
 
 ## 概要
@@ -112,7 +114,7 @@ echo 猫 | llm-translator-rust --pos -l en
 # ファイル翻訳
 cat foobar.txt | llm-translator-rust -l en
 
-# 添付ファイル翻訳（画像/doc/docx/pptx/xlsx/pdf/txt/md/音声）
+# 添付ファイル翻訳（画像/doc/docx/pptx/xlsx/pdf/txt/md/html/json/yaml/po/xml/js/ts/tsx/mermaid/音声）
 llm-translator-rust --data ./slides.pptx --data-mime pptx -l en
 llm-translator-rust --data ./scan.png -l ja
 llm-translator-rust --data ./voice.mp3 -l en
@@ -144,6 +146,7 @@ llm-translator-rust --data ./docs -l ja
 補足:
 - `--data-mime` はディレクトリ内の全ファイルに適用されます。混在する場合は `auto` のままにしてください。
 - 読み込み不可や MIME 判定失敗は failure として報告され、対応外の形式は skip されます。
+- 判定が不確かな場合は `--force-translation` でテキスト扱いにできます。
 - ディレクトリ翻訳は並列実行します（既定 3 スレッド）。`--directory-translation-threads` または
   `settings.toml` で変更できます。
 - `--ignore-translation-file` または無視ファイル（既定: `.llm-translation-rust-ignore`、
@@ -212,6 +215,26 @@ echo 猫 | llm-translator-rust --pos -l en
 - `使用用途` と `使用例` の原文は source language で統一します。
 - 使用例は翻訳語または別訳を必ず含むように補正します。
 
+## 校正（--correction）
+
+`--correction` は入力文の校正を行い、指摘内容を返します。
+
+使い方:
+
+```
+echo "This is pen" | llm-translator-rust --correction --source-lang en
+```
+
+出力例:
+
+```
+This is a pen
+        -
+
+Correction reasons:
+- English requires a/an before a countable noun
+```
+
 ## 音声翻訳
 
 音声は `whisper-rs` で文字起こし → LLM 翻訳 → TTS で再合成します。
@@ -278,6 +301,7 @@ choco install tesseract ffmpeg
 - `--show-models-list` で `provider:model` 形式の一覧を表示します。
 - `--show-whisper-models` で Whisper のモデル名一覧を表示します。
 - `--pos` は辞書形式で訳語・読み・別訳・品詞・活用・使用例を返します。
+- `--correction` は入力文の校正結果と理由を返します。
 - `--whisper-model` で音声文字起こしのモデル名/パスを指定できます。
 - `--model` を省略した場合は `meta.json` の `lastUsingModel` を優先します（未設定/無効なら従来の解決方法にフォールバック）。
 - 履歴は `meta.json` に保存します。出力先は `~/.llm-translator-rust/.cache/dest/<md5>` です。
@@ -366,17 +390,19 @@ eng = "英語"
 | `-f` | `--formal` | スタイルキー（`settings.toml` の `[formally]` 参照） | `formal` |
 | `-L` | `--source-lang` | 入力言語（ISO 639-1/2/3 または `auto`） | `auto` |
 | `-s` | `--slang` | スラングのキーワードを許可 | `false` |
-| `-d` | `--data` | 添付ファイル（画像/doc/docx/pptx/xlsx/pdf/txt/md/html/json/yaml/po/音声） |  |
-| `-M` | `--data-mime` | `--data` または stdin の MIME（`auto`, `image/*`, `pdf`, `doc`, `docx`, `docs`, `pptx`, `xlsx`, `txt`, `md`, `markdown`, `html`, `json`, `yaml`, `po`, `mp3`, `wav`, `m4a`, `flac`, `ogg`） | `auto` |
+| `-d` | `--data` | 添付ファイル（画像/doc/docx/pptx/xlsx/pdf/txt/md/html/json/yaml/po/xml/js/ts/tsx/mermaid/音声） |  |
+| `-M` | `--data-mime` | `--data` または stdin の MIME（`auto`, `image/*`, `pdf`, `doc`, `docx`, `docs`, `pptx`, `xlsx`, `txt`, `md`, `markdown`, `html`, `json`, `yaml`, `po`, `xml`, `js`, `ts`, `tsx`, `mermaid`, `mp3`, `wav`, `m4a`, `flac`, `ogg`） | `auto` |
 |  | `--with-commentout` | コメントアウトも翻訳する（HTML/YAML/PO） |  |
 |  | `--show-enabled-languages` | 有効な翻訳言語を表示 |  |
 |  | `--show-enabled-styles` | 有効なスタイルキーを表示 |  |
 |  | `--show-models-list` | 取得済みモデル一覧を表示（provider:model） |  |
 |  | `--show-whisper-models` | Whisper モデル名の一覧を表示 |  |
 |  | `--pos` | 品詞・活用などの辞書形式で出力 |  |
+|  | `--correction` | 入力文の校正（指摘）を行う |  |
 |  | `--show-histories` | 翻訳履歴を表示 |  |
 |  | `--with-using-tokens` | トークン使用量を付加 |  |
 |  | `--with-using-model` | 使用モデル名を付加 |  |
+|  | `--force-translation` | MIME 判定が不確かな場合でもテキスト扱いで翻訳 |  |
 |  | `--debug-ocr` | OCR デバッグ用の bbox 画像/JSON を出力 |  |
 |  | `--whisper-model` | Whisper モデル名またはパス |  |
 |  | `--overwrite` | 入力ファイル/ディレクトリを上書き（バックアップは `~/.llm-translated-rust/backup`） |  |
@@ -386,7 +412,111 @@ eng = "英語"
 |  | `--verbose` | 詳細ログを出力 |  |
 | `-i` | `--interactive` | インタラクティブモード |  |
 | `-r` | `--read-settings` | 追加の設定 TOML を読み込む |  |
+|  | `--server` | HTTP サーバーを起動（`ADDR` は settings または `0.0.0.0:11223` が既定） |  |
 | `-h` | `--help` | ヘルプ表示 |  |
+
+## サーバーモード
+
+HTTP サーバーを起動します。
+
+```bash
+llm-translator-rust --server
+llm-translator-rust --server 0.0.0.0:11223
+```
+
+`settings.toml` の `[server]` で設定できます。
+
+```toml
+[server]
+host = "0.0.0.0"
+port = 11223
+tmp_dir = "/tmp/llm-translator-rust"
+```
+
+リクエストは JSON の `POST /translate`（`text` か `data` のどちらか）です。
+
+```json
+{
+  "text": "Hello",
+  "lang": "ja"
+}
+```
+
+```json
+{
+  "data": "/path/to/file-or-dir",
+  "data_mime": "auto",
+  "lang": "ja",
+  "force_translation": false
+}
+```
+
+校正リクエスト:
+
+```json
+{
+  "text": "This is pen",
+  "correction": true,
+  "source_lang": "en"
+}
+```
+
+レスポンス（テキスト）:
+
+```json
+{
+  "contents": [
+    {
+      "mime": "text/plain",
+      "format": "raw",
+      "original": "Hello",
+      "translated": "こんにちは"
+    }
+  ]
+}
+```
+
+校正レスポンス（テキスト）:
+
+```json
+{
+  "contents": [
+    {
+      "mime": "text/plain",
+      "format": "raw",
+      "original": "This is pen",
+      "translated": "This is a pen",
+      "correction": {
+        "markers": "        -",
+        "reasons": ["English requires a/an before a countable noun"],
+        "source_language": "en"
+      }
+    }
+  ]
+}
+```
+
+レスポンス（バイナリ）:
+
+```json
+{
+  "contents": [
+    {
+      "mime": "image/png",
+      "format": "path",
+      "translated": "/tmp/llm-translator-rust/llm-translator-xxxx.png"
+    }
+  ]
+}
+```
+
+`data` がディレクトリの場合は `contents` に複数エントリが入ります。
+
+## FFI (C ABI)
+
+- C ヘッダは `ext/llm_translator_rust.h` にあります。
+- 文字列を返す関数は `llm_ext_free_string` で解放します。
+- 失敗時は `llm_ext_last_error_message` でエラー内容を取得できます。
 
 ## 補足
 

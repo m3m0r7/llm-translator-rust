@@ -8,6 +8,9 @@ use tokio::sync::Mutex;
 use tracing::{info, warn};
 
 pub mod attachments;
+pub mod correction;
+pub mod ext;
+pub mod server;
 mod backup;
 pub mod data;
 pub mod dictionary;
@@ -44,12 +47,14 @@ pub struct Config {
     pub ignore_translation_files: Vec<String>,
     pub out_path: Option<String>,
     pub overwrite: bool,
+    pub force_translation: bool,
     pub settings_path: Option<String>,
     pub show_enabled_languages: bool,
     pub show_enabled_styles: bool,
     pub show_models_list: bool,
     pub show_whisper_models: bool,
     pub pos: bool,
+    pub correction: bool,
     pub show_histories: bool,
     pub with_using_tokens: bool,
     pub with_using_model: bool,
@@ -60,9 +65,24 @@ pub struct Config {
 }
 
 pub async fn run(config: Config, input: Option<String>) -> Result<String> {
-    let mut config = config;
     let settings_path = config.settings_path.as_deref().map(Path::new);
-    let mut settings = settings::load_settings(settings_path)?;
+    let settings = settings::load_settings(settings_path)?;
+    run_with_loaded_settings(config, settings, input).await
+}
+
+pub async fn run_with_settings(
+    config: Config,
+    settings: settings::Settings,
+    input: Option<String>,
+) -> Result<String> {
+    run_with_loaded_settings(config, settings, input).await
+}
+
+async fn run_with_loaded_settings(
+    mut config: Config,
+    mut settings: settings::Settings,
+    input: Option<String>,
+) -> Result<String> {
     if let Some(model) = config.whisper_model.as_deref() {
         if !model.trim().is_empty() {
             settings.whisper_model = Some(model.to_string());
@@ -108,17 +128,39 @@ pub async fn run(config: Config, input: Option<String>) -> Result<String> {
         return Err(anyhow!("--out cannot be used with --overwrite"));
     }
 
-    let data_attachment = if data_is_dir {
+    let mut needs_mime_detection = false;
+    let mut data_attachment = if data_is_dir {
         None
     } else if let Some(attachment) = config.data_attachment.take() {
         Some(attachment)
     } else if let Some(path) = data_path {
         info!("loading attachment: {}", path.display());
-        Some(data::load_attachment(path, config.data_mime.as_deref())?)
+        match data::load_attachment(path, config.data_mime.as_deref()) {
+            Ok(attachment) => Some(attachment),
+            Err(err) => {
+                let mime_hint = config.data_mime.as_deref().unwrap_or("auto");
+                if mime_hint.eq_ignore_ascii_case("auto") {
+                    let bytes = fs::read(path).with_context(|| {
+                        format!("failed to read data file: {}", path.display())
+                    })?;
+                    let name = path
+                        .file_name()
+                        .and_then(|value| value.to_str())
+                        .map(|value| value.to_string());
+                    needs_mime_detection = true;
+                    Some(data::DataAttachment {
+                        bytes,
+                        mime: data::OCTET_STREAM_MIME.to_string(),
+                        name,
+                    })
+                } else {
+                    return Err(err);
+                }
+            }
+        }
     } else {
         None
     };
-    let attachment_mime = data_attachment.as_ref().map(|data| data.mime.clone());
     let history_src = config.data.clone();
 
     if config.out_path.is_some() && !data_is_dir && data_attachment.is_none() {
@@ -199,6 +241,28 @@ pub async fn run(config: Config, input: Option<String>) -> Result<String> {
         input.to_string()
     };
 
+    if config.correction {
+        if config.pos {
+            return Err(anyhow!("--correction cannot be used with --pos"));
+        }
+        if data_attachment.is_some() || data_is_dir {
+            return Err(anyhow!("--correction only supports text input"));
+        }
+        info!("running correction mode");
+        let output = correction::exec_correction(&translator, input, &options).await?;
+        let formatted = correction::format_correction_output(&output.result);
+        let execution = ExecutionOutput {
+            text: formatted,
+            model: output.model,
+            usage: output.usage,
+        };
+        return Ok(format_execution_output(
+            &execution,
+            with_using_model,
+            with_using_tokens,
+        ));
+    }
+
     if config.pos {
         if data_attachment.is_some() || data_is_dir {
             return Err(anyhow!("--pos only supports text input"));
@@ -242,6 +306,7 @@ pub async fn run(config: Config, input: Option<String>) -> Result<String> {
             with_commentout: config.with_commentout,
             debug_ocr: config.debug_ocr,
             overwrite: config.overwrite,
+            force_translation: config.force_translation,
             translated_suffix,
             backup_ttl_days,
             provider: selection.provider,
@@ -255,6 +320,39 @@ pub async fn run(config: Config, input: Option<String>) -> Result<String> {
         return Ok(output);
     }
 
+    if needs_mime_detection {
+        if let Some(attachment) = data_attachment.as_mut() {
+            let detection = attachments::detect_mime_with_llm(attachment, &translator).await?;
+            let normalized = data::normalize_mime_hint(&detection.mime);
+            if detection.confident {
+                if let Some(mime) = normalized {
+                    attachment.mime = mime;
+                } else if config.force_translation {
+                    attachment.mime = data::TEXT_MIME.to_string();
+                } else {
+                    return Err(anyhow!(
+                        "unable to determine supported mime for '{}' (detected '{}'); use --force-translation to treat as text",
+                        attachment
+                            .name
+                            .as_deref()
+                            .unwrap_or("attachment"),
+                        detection.mime
+                    ));
+                }
+            } else if config.force_translation {
+                attachment.mime = data::TEXT_MIME.to_string();
+            } else {
+                return Err(anyhow!(
+                    "unable to determine mime for '{}' (low confidence); use --force-translation to treat as text",
+                    attachment
+                        .name
+                        .as_deref()
+                        .unwrap_or("attachment")
+                ));
+            }
+        }
+    }
+
     if let Some(data) = data_attachment.as_ref() {
         info!("translating attachment: {}", data.mime);
         if let Some(output) = attachments::translate_attachment(
@@ -264,6 +362,7 @@ pub async fn run(config: Config, input: Option<String>) -> Result<String> {
             &options,
             config.with_commentout,
             config.debug_ocr,
+            config.force_translation,
             history_src.as_deref().map(Path::new),
         )
         .await?
@@ -336,6 +435,8 @@ pub async fn run(config: Config, input: Option<String>) -> Result<String> {
             ));
         }
     }
+
+    let attachment_mime = data_attachment.as_ref().map(|data| data.mime.clone());
 
     let execution = translator
         .exec_with_data(
@@ -494,6 +595,7 @@ struct DirTranslateConfig {
     with_commentout: bool,
     debug_ocr: bool,
     overwrite: bool,
+    force_translation: bool,
     translated_suffix: String,
     backup_ttl_days: u64,
     provider: ProviderKind,
@@ -514,6 +616,7 @@ struct DirTranslateShared {
     with_commentout: bool,
     debug_ocr: bool,
     overwrite: bool,
+    force_translation: bool,
     backup_ttl_days: u64,
     provider: ProviderKind,
     history_model: String,
@@ -578,6 +681,7 @@ async fn translate_data_dir<P: Provider + Clone>(
         with_commentout: config.with_commentout,
         debug_ocr: config.debug_ocr,
         overwrite: config.overwrite,
+        force_translation: config.force_translation,
         backup_ttl_days: config.backup_ttl_days,
         provider: config.provider,
         history_model: config.history_model,
@@ -659,7 +763,59 @@ async fn process_dir_file<P: Provider + Clone>(
 
     let attachment = match data::load_attachment(&path, shared.mime_hint.as_deref()) {
         Ok(value) => value,
-        Err(err) => return copy_or_skip(&path, &shared, Some(err)),
+        Err(err) => {
+            let mime_hint = shared.mime_hint.as_deref().unwrap_or("auto");
+            if mime_hint.eq_ignore_ascii_case("auto") {
+                let bytes = match fs::read(&path) {
+                    Ok(value) => value,
+                    Err(read_err) => {
+                        return copy_or_skip(&path, &shared, Some(read_err.into()))
+                    }
+                };
+                let name = path
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .map(|value| value.to_string());
+                let mut attachment = data::DataAttachment {
+                    bytes,
+                    mime: data::OCTET_STREAM_MIME.to_string(),
+                    name,
+                };
+                let detection = match attachments::detect_mime_with_llm(&attachment, &translator).await
+                {
+                    Ok(value) => value,
+                    Err(detect_err) => return copy_or_skip(&path, &shared, Some(detect_err)),
+                };
+                let normalized = data::normalize_mime_hint(&detection.mime);
+                if detection.confident {
+                    if let Some(mime) = normalized {
+                        attachment.mime = mime;
+                    } else if shared.force_translation {
+                        attachment.mime = data::TEXT_MIME.to_string();
+                    } else {
+                        return copy_or_skip(
+                            &path,
+                            &shared,
+                            Some(anyhow!(
+                                "unable to determine supported mime (detected '{}')",
+                                detection.mime
+                            )),
+                        );
+                    }
+                } else if shared.force_translation {
+                    attachment.mime = data::TEXT_MIME.to_string();
+                } else {
+                    return copy_or_skip(
+                        &path,
+                        &shared,
+                        Some(anyhow!("unable to determine mime (low confidence)")),
+                    );
+                }
+                attachment
+            } else {
+                return copy_or_skip(&path, &shared, Some(err));
+            }
+        }
     };
 
     let debug_src = if shared.debug_ocr {
@@ -674,6 +830,7 @@ async fn process_dir_file<P: Provider + Clone>(
         &shared.options,
         shared.with_commentout,
         shared.debug_ocr,
+        shared.force_translation,
         debug_src,
     )
     .await;
@@ -933,7 +1090,7 @@ fn record_history(
     model_registry::record_history(entry, history_limit)
 }
 
-fn resolve_ocr_languages(
+pub(crate) fn resolve_ocr_languages(
     _settings: &settings::Settings,
     source_lang: &str,
     target_lang: &str,
@@ -1167,7 +1324,10 @@ fn format_models_for_provider(provider: ProviderKind, models: &[String]) -> Stri
         .join("\n")
 }
 
-fn validate_lang_codes(config: &Config, registry: &languages::LanguageRegistry) -> Result<()> {
+pub(crate) fn validate_lang_codes(
+    config: &Config,
+    registry: &languages::LanguageRegistry,
+) -> Result<()> {
     if config.source_lang.trim().eq_ignore_ascii_case("auto") {
         // ok
     } else if !is_valid_lang_code(&config.source_lang, registry) {
@@ -1209,7 +1369,7 @@ fn split_lang_suffix(code: &str) -> Option<(String, String)> {
     Some((base.to_lowercase(), suffix.to_lowercase()))
 }
 
-async fn resolve_model(
+pub(crate) async fn resolve_model(
     provider: ProviderKind,
     requested_model: Option<&str>,
     key: &str,

@@ -1,10 +1,12 @@
 mod cache;
+mod code;
 mod media;
+mod mime_detect;
 mod office;
 mod text;
 mod util;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Result};
 use std::path::Path;
 use tracing::info;
 
@@ -21,6 +23,8 @@ use office::{translate_office_zip, OfficeKind};
 use text::{
     translate_html, translate_json, translate_markdown, translate_po, translate_xml, translate_yaml,
 };
+use code::{translate_javascript, translate_mermaid, translate_tsx, translate_typescript};
+pub use mime_detect::{detect_mime_with_llm, MimeDetection};
 
 pub struct AttachmentTranslation {
     pub bytes: Vec<u8>,
@@ -36,6 +40,7 @@ pub async fn translate_attachment<P: Provider + Clone>(
     options: &TranslateOptions,
     with_commentout: bool,
     debug_ocr: bool,
+    force_translation: bool,
     debug_src: Option<&Path>,
 ) -> Result<Option<AttachmentTranslation>> {
     match data.mime.as_str() {
@@ -123,6 +128,29 @@ pub async fn translate_attachment<P: Provider + Clone>(
             let output = translate_xml(&data.bytes, with_commentout, translator, options).await?;
             return Ok(Some(output));
         }
+        data::JS_MIME => {
+            info!("attachment: javascript");
+            let output =
+                translate_javascript(&data.bytes, with_commentout, translator, options).await?;
+            return Ok(Some(output));
+        }
+        data::TS_MIME => {
+            info!("attachment: typescript");
+            let output =
+                translate_typescript(&data.bytes, with_commentout, translator, options).await?;
+            return Ok(Some(output));
+        }
+        data::TSX_MIME => {
+            info!("attachment: tsx");
+            let output = translate_tsx(&data.bytes, with_commentout, translator, options).await?;
+            return Ok(Some(output));
+        }
+        data::MERMAID_MIME => {
+            info!("attachment: mermaid");
+            let output =
+                translate_mermaid(&data.bytes, with_commentout, translator, options).await?;
+            return Ok(Some(output));
+        }
         mime if mime.starts_with("audio/") => {
             info!("attachment: audio ({})", mime);
             let output = translate_audio(data, translator, options).await?;
@@ -130,9 +158,14 @@ pub async fn translate_attachment<P: Provider + Clone>(
         }
         data::TEXT_MIME => {
             info!("attachment: text");
-            let text = std::str::from_utf8(&data.bytes)
-                .with_context(|| "failed to decode text file as UTF-8")?;
-            let exec = translator.exec(text, options.clone()).await?;
+            let text = match std::str::from_utf8(&data.bytes) {
+                Ok(value) => value.to_string(),
+                Err(_) if force_translation => String::from_utf8_lossy(&data.bytes).to_string(),
+                Err(err) => {
+                    return Err(anyhow!("failed to decode text file as UTF-8: {}", err))
+                }
+            };
+            let exec = translator.exec(text.as_str(), options.clone()).await?;
             let bytes = exec.text.into_bytes();
             let output = AttachmentTranslation {
                 bytes,

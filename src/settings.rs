@@ -23,6 +23,9 @@ pub struct Settings {
     pub overlay_font_path: Option<String>,
     pub ocr_normalize: bool,
     pub whisper_model: Option<String>,
+    pub server_host: String,
+    pub server_port: u16,
+    pub server_tmp_dir: Option<String>,
 }
 
 impl Default for Settings {
@@ -43,6 +46,9 @@ impl Default for Settings {
             overlay_font_path: None,
             ocr_normalize: true,
             whisper_model: None,
+            server_host: "0.0.0.0".to_string(),
+            server_port: 11223,
+            server_tmp_dir: None,
         }
     }
 }
@@ -53,6 +59,7 @@ struct SettingsFile {
     system: Option<SystemSettings>,
     ocr: Option<OcrSettings>,
     whisper: Option<WhisperSettings>,
+    server: Option<ServerSettings>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -79,6 +86,13 @@ struct OcrSettings {
 #[derive(Debug, Default, Deserialize)]
 struct WhisperSettings {
     model: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct ServerSettings {
+    host: Option<String>,
+    port: Option<u16>,
+    tmp_dir: Option<String>,
 }
 
 pub fn load_settings(extra_path: Option<&Path>) -> Result<Settings> {
@@ -188,6 +202,23 @@ impl Settings {
             if let Some(model) = whisper.model {
                 if !model.trim().is_empty() {
                     self.whisper_model = Some(model);
+                }
+            }
+        }
+        if let Some(server) = incoming.server {
+            if let Some(host) = server.host {
+                if !host.trim().is_empty() {
+                    self.server_host = host;
+                }
+            }
+            if let Some(port) = server.port {
+                if port > 0 {
+                    self.server_port = port;
+                }
+            }
+            if let Some(tmp_dir) = server.tmp_dir {
+                if !tmp_dir.trim().is_empty() {
+                    self.server_tmp_dir = Some(tmp_dir);
                 }
             }
         }

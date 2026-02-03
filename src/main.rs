@@ -34,11 +34,11 @@ struct Cli {
     #[arg(short = 's', long = "slang")]
     slang: bool,
 
-    /// File or directory to translate (image/doc/docx/pptx/xlsx/pdf/txt/md/html/json/yaml/po/xml/audio)
+    /// File or directory to translate (image/doc/docx/pptx/xlsx/pdf/txt/md/html/json/yaml/po/xml/js/ts/tsx/mermaid/audio)
     #[arg(short = 'd', long = "data")]
     data: Option<String>,
 
-    /// Mime type for --data (auto, image/*, pdf, doc, docx, docs, pptx, xlsx, txt, md, markdown, html, json, yaml, po, xml, mp3, wav, m4a, flac, ogg)
+    /// Mime type for --data (auto, image/*, pdf, doc, docx, docs, pptx, xlsx, txt, md, markdown, html, json, yaml, po, xml, js, ts, tsx, mermaid, mp3, wav, m4a, flac, ogg)
     #[arg(short = 'M', long = "data-mime")]
     data_mime: Option<String>,
 
@@ -61,6 +61,10 @@ struct Cli {
     /// Show dictionary info (part of speech/inflections) for the input
     #[arg(long = "pos")]
     pos: bool,
+
+    /// Proofread input text and point out corrections
+    #[arg(long = "correction", alias = "correcton")]
+    correction: bool,
 
     /// Show translation histories and exit
     #[arg(long = "show-histories")]
@@ -90,6 +94,10 @@ struct Cli {
     #[arg(long = "overwrite", requires = "data")]
     overwrite: bool,
 
+    /// Force translation when mime detection is uncertain (treat as text)
+    #[arg(long = "force-translation")]
+    force_translation: bool,
+
     /// Directory translation threads (overrides settings)
     #[arg(long = "directory-translation-threads")]
     directory_translation_threads: Option<usize>,
@@ -113,6 +121,10 @@ struct Cli {
     /// Whisper model name or path (audio transcription)
     #[arg(long = "whisper-model")]
     whisper_model: Option<String>,
+
+    /// Start HTTP server (default: settings or 0.0.0.0:11223)
+    #[arg(long = "server", value_name = "ADDR", num_args = 0..=1, default_missing_value = "__settings__")]
+    server: Option<String>,
 }
 
 #[tokio::main]
@@ -125,6 +137,9 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
     llm_translator_rust::logging::init(cli.verbose)?;
+    if cli.server.is_some() {
+        return run_server(cli).await;
+    }
     if cli.interactive {
         return run_interactive(cli).await;
     }
@@ -213,12 +228,14 @@ async fn main() -> Result<()> {
             show_models_list: cli.show_models_list,
             show_whisper_models: cli.show_whisper_models,
             pos: cli.pos,
+            correction: cli.correction,
             show_histories: cli.show_histories,
             with_using_tokens: cli.with_using_tokens,
             with_using_model: cli.with_using_model,
             with_commentout: cli.with_commentout,
             debug_ocr: cli.debug_ocr,
             overwrite: cli.overwrite,
+            force_translation: cli.force_translation,
             verbose: cli.verbose,
             whisper_model: cli.whisper_model,
         },
@@ -233,6 +250,8 @@ async fn main() -> Result<()> {
 struct InteractiveState {
     config: llm_translator_rust::Config,
 }
+
+const SERVER_DEFAULT_SENTINEL: &str = "__settings__";
 
 impl InteractiveState {
     fn new(cli: &Cli) -> Self {
@@ -256,12 +275,14 @@ impl InteractiveState {
                 show_models_list: false,
                 show_whisper_models: false,
                 pos: cli.pos,
+                correction: cli.correction,
                 show_histories: false,
                 with_using_tokens: cli.with_using_tokens,
                 with_using_model: cli.with_using_model,
                 with_commentout: cli.with_commentout,
                 debug_ocr: cli.debug_ocr,
                 overwrite: cli.overwrite,
+                force_translation: cli.force_translation,
                 verbose: cli.verbose,
                 whisper_model: cli.whisper_model.clone(),
             },
@@ -277,6 +298,17 @@ impl InteractiveState {
         config.show_histories = false;
         config
     }
+}
+
+async fn run_server(cli: Cli) -> Result<()> {
+    let settings_path = cli.read_settings.as_deref().map(std::path::Path::new);
+    let settings = llm_translator_rust::settings::load_settings(settings_path)?;
+    let addr = match cli.server.as_deref() {
+        Some(value) if value != SERVER_DEFAULT_SENTINEL => value.to_string(),
+        _ => format!("{}:{}", settings.server_host, settings.server_port),
+    };
+    llm_translator_rust::server::run_server(settings, addr).await?;
+    Ok(())
 }
 
 async fn run_interactive(cli: Cli) -> Result<()> {
@@ -430,6 +462,11 @@ async fn handle_interactive_command(input: &str, state: &mut InteractiveState) -
         println!("pos: {}", state.config.pos);
         return Ok(false);
     }
+    if let Some(arg) = trimmed.strip_prefix("/correction") {
+        state.config.correction = parse_toggle(arg, state.config.correction)?;
+        println!("correction: {}", state.config.correction);
+        return Ok(false);
+    }
     if let Some(arg) = trimmed.strip_prefix("/with-using-model") {
         state.config.with_using_model = parse_toggle(arg, state.config.with_using_model)?;
         println!("with-using-model: {}", state.config.with_using_model);
@@ -525,6 +562,7 @@ fn print_interactive_help() {
     println!("  /formal <key>                Set formality key");
     println!("  /slang [on|off]              Toggle slang");
     println!("  /pos [on|off]                Toggle dictionary mode");
+    println!("  /correction [on|off]         Toggle correction mode");
     println!("  /with-using-model [on|off]   Toggle model suffix output");
     println!("  /with-using-tokens [on|off]  Toggle token usage output");
     println!("  /with-commentout [on|off]    Toggle comment translation");
@@ -554,6 +592,7 @@ mod tests {
         assert!(!cli.show_models_list);
         assert!(!cli.show_whisper_models);
         assert!(!cli.pos);
+        assert!(!cli.correction);
         assert!(!cli.show_histories);
         assert!(!cli.with_using_tokens);
         assert!(!cli.with_using_model);
@@ -561,12 +600,14 @@ mod tests {
         assert!(!cli.with_commentout);
         assert!(!cli.debug_ocr);
         assert!(!cli.overwrite);
+        assert!(!cli.force_translation);
         assert!(cli.directory_translation_threads.is_none());
         assert!(cli.ignore_translation_file.is_empty());
         assert!(cli.out.is_none());
         assert!(!cli.verbose);
         assert!(!cli.interactive);
         assert!(cli.whisper_model.is_none());
+        assert!(cli.server.is_none());
     }
 
     #[test]
@@ -593,6 +634,7 @@ mod tests {
             "--show-models-list",
             "--show-whisper-models",
             "--pos",
+            "--correction",
             "--show-histories",
             "--with-using-tokens",
             "--with-using-model",
@@ -601,6 +643,7 @@ mod tests {
             "--with-commentout",
             "--debug-ocr",
             "--overwrite",
+            "--force-translation",
             "--directory-translation-threads",
             "5",
             "--ignore-translation-file",
@@ -613,6 +656,8 @@ mod tests {
             "-i",
             "--whisper-model",
             "base",
+            "--server",
+            "127.0.0.1:1234",
         ]);
         assert_eq!(cli.lang, "ja");
         assert_eq!(cli.model.as_deref(), Some("openai:gpt-4o"));
@@ -627,6 +672,7 @@ mod tests {
         assert!(cli.show_models_list);
         assert!(cli.show_whisper_models);
         assert!(cli.pos);
+        assert!(cli.correction);
         assert!(cli.show_histories);
         assert!(cli.with_using_tokens);
         assert!(cli.with_using_model);
@@ -634,6 +680,7 @@ mod tests {
         assert!(cli.with_commentout);
         assert!(cli.debug_ocr);
         assert!(cli.overwrite);
+        assert!(cli.force_translation);
         assert_eq!(cli.directory_translation_threads, Some(5));
         assert_eq!(cli.ignore_translation_file.len(), 2);
         assert_eq!(cli.ignore_translation_file[0], "node_modules/**");
@@ -642,6 +689,7 @@ mod tests {
         assert!(cli.verbose);
         assert!(cli.interactive);
         assert_eq!(cli.whisper_model.as_deref(), Some("base"));
+        assert_eq!(cli.server.as_deref(), Some("127.0.0.1:1234"));
     }
 
     #[test]

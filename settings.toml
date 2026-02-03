@@ -103,3 +103,9 @@ normalize = true
 # [whisper] controls audio transcription model.
 # model can be a path to ggml/gguf or a model name (tiny, base, small, medium, large, large-v2, large-v3, tiny.en, base.en, small.en, medium.en).
 # model = "base"
+
+# [server] controls HTTP server settings for --server.
+[server]
+# host = "0.0.0.0"
+# port = 11223
+# tmp_dir = "/tmp/llm-translator-rust"

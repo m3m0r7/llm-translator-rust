@@ -15,11 +15,16 @@ pub const JSON_MIME: &str = "application/json";
 pub const YAML_MIME: &str = "text/yaml";
 pub const PO_MIME: &str = "text/x-po";
 pub const XML_MIME: &str = "application/xml";
+pub const JS_MIME: &str = "text/javascript";
+pub const TS_MIME: &str = "text/typescript";
+pub const TSX_MIME: &str = "text/tsx";
+pub const MERMAID_MIME: &str = "text/mermaid";
 pub const MP3_MIME: &str = "audio/mpeg";
 pub const WAV_MIME: &str = "audio/wav";
 pub const M4A_MIME: &str = "audio/mp4";
 pub const FLAC_MIME: &str = "audio/flac";
 pub const OGG_MIME: &str = "audio/ogg";
+pub const OCTET_STREAM_MIME: &str = "application/octet-stream";
 
 #[derive(Debug, Clone)]
 pub struct DataAttachment {
@@ -96,6 +101,10 @@ fn resolve_mime(input: &str, bytes: &[u8], path: Option<&Path>) -> Result<String
         "yaml" | "yml" => return Ok(YAML_MIME.to_string()),
         "po" => return Ok(PO_MIME.to_string()),
         "xml" => return Ok(XML_MIME.to_string()),
+        "js" | "javascript" => return Ok(JS_MIME.to_string()),
+        "ts" | "typescript" => return Ok(TS_MIME.to_string()),
+        "tsx" => return Ok(TSX_MIME.to_string()),
+        "mermaid" | "mmd" => return Ok(MERMAID_MIME.to_string()),
         "mp3" => return Ok(MP3_MIME.to_string()),
         "wav" => return Ok(WAV_MIME.to_string()),
         "m4a" => return Ok(M4A_MIME.to_string()),
@@ -123,6 +132,13 @@ fn resolve_mime(input: &str, bytes: &[u8], path: Option<&Path>) -> Result<String
         || lower == YAML_MIME
         || lower == PO_MIME
         || lower == XML_MIME
+        || lower == JS_MIME
+        || lower == TS_MIME
+        || lower == TSX_MIME
+        || lower == MERMAID_MIME
+        || lower == "application/javascript"
+        || lower == "application/typescript"
+        || lower == "application/tsx"
         || lower == "text/x-markdown"
         || lower == "application/markdown"
         || lower == "application/x-markdown"
@@ -147,6 +163,9 @@ fn resolve_mime(input: &str, bytes: &[u8], path: Option<&Path>) -> Result<String
             "text/x-gettext-translation" | "application/x-gettext-translation" => {
                 PO_MIME.to_string()
             }
+            "application/javascript" => JS_MIME.to_string(),
+            "application/typescript" => TS_MIME.to_string(),
+            "application/tsx" => TSX_MIME.to_string(),
             _ => lower,
         });
     }
@@ -158,7 +177,7 @@ fn resolve_mime(input: &str, bytes: &[u8], path: Option<&Path>) -> Result<String
     }
 
     Err(anyhow!(
-        "unsupported --data-mime '{}' (expected auto, image/*, pdf, doc, docx, docs, pptx, xlsx, txt, md, markdown, html, json, yaml, po, xml, mp3, wav, m4a, flac, ogg)",
+        "unsupported --data-mime '{}' (expected auto, image/*, pdf, doc, docx, docs, pptx, xlsx, txt, md, markdown, html, json, yaml, po, xml, js, ts, tsx, mermaid, mp3, wav, m4a, flac, ogg)",
         raw
     ))
 }
@@ -218,6 +237,10 @@ fn sniff_mime_bytes(bytes: &[u8]) -> Option<&'static str> {
             Some(PO_MIME)
         }
         "text/xml" | "application/xml" => Some(XML_MIME),
+        JS_MIME | "application/javascript" => Some(JS_MIME),
+        TS_MIME | "application/typescript" => Some(TS_MIME),
+        TSX_MIME | "application/tsx" => Some(TSX_MIME),
+        MERMAID_MIME => Some(MERMAID_MIME),
         PDF_MIME => Some(PDF_MIME),
         DOC_MIME => Some(DOC_MIME),
         TEXT_MIME => Some(TEXT_MIME),
@@ -269,6 +292,10 @@ fn mime_from_extension(ext: &str) -> Option<&'static str> {
         "yaml" | "yml" => Some(YAML_MIME),
         "po" => Some(PO_MIME),
         "xml" => Some(XML_MIME),
+        "js" | "mjs" | "cjs" => Some(JS_MIME),
+        "ts" | "mts" | "cts" => Some(TS_MIME),
+        "tsx" => Some(TSX_MIME),
+        "mmd" | "mermaid" => Some(MERMAID_MIME),
         "mp3" => Some(MP3_MIME),
         "wav" => Some(WAV_MIME),
         "m4a" => Some(M4A_MIME),
@@ -299,6 +326,10 @@ pub fn extension_from_mime(mime: &str) -> Option<&'static str> {
         YAML_MIME => Some("yaml"),
         PO_MIME => Some("po"),
         XML_MIME | "text/xml" => Some("xml"),
+        JS_MIME | "application/javascript" => Some("js"),
+        TS_MIME | "application/typescript" => Some("ts"),
+        TSX_MIME | "application/tsx" => Some("tsx"),
+        MERMAID_MIME => Some("mmd"),
         MP3_MIME => Some("mp3"),
         WAV_MIME => Some("wav"),
         M4A_MIME => Some("m4a"),
@@ -313,6 +344,52 @@ pub fn extension_from_mime(mime: &str) -> Option<&'static str> {
         "image/heic" => Some("heic"),
         _ => None,
     }
+}
+
+pub fn normalize_mime_hint(input: &str) -> Option<String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let base = trimmed.split(';').next().unwrap_or(trimmed).trim();
+    if base.is_empty() {
+        return None;
+    }
+    let lower = base.to_lowercase();
+    let normalized = match lower.as_str() {
+        "auto" | "image" | "image/*" => return None,
+        "pdf" => PDF_MIME.to_string(),
+        "doc" => DOC_MIME.to_string(),
+        "docs" | "docx" => DOCX_MIME.to_string(),
+        "pptx" => PPTX_MIME.to_string(),
+        "xlsx" => XLSX_MIME.to_string(),
+        "txt" | "text" => TEXT_MIME.to_string(),
+        "md" | "markdown" | "text/x-markdown" | "application/markdown" | "application/x-markdown" => {
+            MARKDOWN_MIME.to_string()
+        }
+        "html" | "htm" => HTML_MIME.to_string(),
+        "json" => JSON_MIME.to_string(),
+        "yaml" | "yml" | "application/x-yaml" | "application/yaml" | "text/x-yaml" => {
+            YAML_MIME.to_string()
+        }
+        "po" | "text/x-gettext-translation" | "application/x-gettext-translation" => {
+            PO_MIME.to_string()
+        }
+        "xml" | "text/xml" | "application/xml" => XML_MIME.to_string(),
+        "js" | "javascript" | "text/javascript" | "application/javascript" => JS_MIME.to_string(),
+        "ts" | "typescript" | "text/typescript" | "application/typescript" => TS_MIME.to_string(),
+        "tsx" | "text/tsx" | "application/tsx" => TSX_MIME.to_string(),
+        "mermaid" | "mmd" | "text/mermaid" => MERMAID_MIME.to_string(),
+        "mp3" => MP3_MIME.to_string(),
+        "wav" => WAV_MIME.to_string(),
+        "m4a" => M4A_MIME.to_string(),
+        "flac" => FLAC_MIME.to_string(),
+        "ogg" => OGG_MIME.to_string(),
+        _ if lower.starts_with("image/") => lower,
+        _ if lower.starts_with("audio/") => lower,
+        _ => return None,
+    };
+    Some(normalized)
 }
 
 #[cfg(test)]
@@ -348,6 +425,10 @@ mod tests {
             ("yaml", YAML_MIME),
             ("po", PO_MIME),
             ("xml", XML_MIME),
+            ("js", JS_MIME),
+            ("ts", TS_MIME),
+            ("tsx", TSX_MIME),
+            ("mermaid", MERMAID_MIME),
             ("mp3", MP3_MIME),
             ("wav", WAV_MIME),
             ("m4a", M4A_MIME),
@@ -377,5 +458,18 @@ mod tests {
     #[test]
     fn extension_for_xml_mime() {
         assert_eq!(extension_from_mime(XML_MIME), Some("xml"));
+    }
+
+    #[test]
+    fn normalize_mime_hint_variants() {
+        assert_eq!(
+            normalize_mime_hint("application/javascript"),
+            Some(JS_MIME.to_string())
+        );
+        assert_eq!(
+            normalize_mime_hint("text/mermaid; charset=utf-8"),
+            Some(MERMAID_MIME.to_string())
+        );
+        assert_eq!(normalize_mime_hint("auto"), None);
     }
 }

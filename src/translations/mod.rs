@@ -11,6 +11,7 @@ use crate::providers::ToolSpec;
 use crate::settings::Settings;
 
 pub const TOOL_NAME: &str = "deliver_translation";
+pub const MIME_TOOL_NAME: &str = "detect_mime";
 
 #[derive(Debug, Clone)]
 pub struct TranslateOptions {
@@ -84,6 +85,22 @@ pub fn tool_spec(tool_name: &str) -> ToolSpec {
     }
 }
 
+pub fn mime_tool_spec(tool_name: &str) -> ToolSpec {
+    let base = json!({
+        "type": "object",
+        "properties": {
+            "mime": {"type": "string"},
+            "confident": {"type": "boolean"}
+        },
+        "required": ["mime", "confident"]
+    });
+    ToolSpec {
+        name: tool_name.to_string(),
+        description: "Return the detected MIME type with confidence.".to_string(),
+        parameters: base,
+    }
+}
+
 pub fn render_system_prompt(
     options: &TranslateOptions,
     tool_name: &str,
@@ -123,6 +140,21 @@ pub fn render_ocr_normalize_prompt(source_lang: &str, tool_name: &str) -> Result
 
 pub fn render_ocr_romanize_prompt(source_lang: &str, tool_name: &str) -> Result<String> {
     render_simple_prompt("ocr_romanize_prompt.tera", source_lang, tool_name)
+}
+
+pub fn render_mime_prompt(
+    tool_name: &str,
+    data_name: Option<&str>,
+    supported_mimes: &[&str],
+) -> Result<String> {
+    let template = load_prompt_template("mime_prompt.tera")?;
+    let mut context = TeraContext::new();
+    context.insert("tool_name", tool_name);
+    let mimes: Vec<&str> = supported_mimes.iter().copied().collect();
+    context.insert("supported_mimes", &mimes);
+    context.insert("data_name", &data_name);
+    Tera::one_off(&template, &context, false)
+        .with_context(|| "failed to render mime prompt")
 }
 
 pub fn parse_tool_args(

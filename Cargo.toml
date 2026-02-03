@@ -3,6 +3,9 @@ name = "llm-translator-rust"
 version = "0.1.5"
 edition = "2021"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 anyhow = "1"
 base64 = "0.22"
@@ -11,6 +14,7 @@ infer = "0.16"
 md5 = "0.7"
 image = "0.25"
 tempfile = "3"
+axum = { version = "0.7", features = ["json"] }
 resvg = { version = "0.45", default-features = false, features = ["text", "raster-images"] }
 tiny-skia = "0.11"
 usvg = "0.45"
