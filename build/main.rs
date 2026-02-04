@@ -107,6 +107,10 @@ fn run_build(args: BuildArgs) -> Result<()> {
 
     let build_env = build_env_from_args(&args);
     write_build_env(&env_path, &build_env)?;
+    let project_env_path = project_dir.join("build_env.toml");
+    if project_env_path != env_path {
+        write_build_env(&project_env_path, &build_env)?;
+    }
 
     let env_path_abs = env_path
         .canonicalize()

@@ -2,7 +2,7 @@ use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-const BUILD_ENV_TOML: &str = include_str!(env!("BUILD_ENV_TOML_PATH"));
+const BUILD_ENV_TOML: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/build_env.toml"));
 
 macro_rules! build_env_toml {
     () => {
