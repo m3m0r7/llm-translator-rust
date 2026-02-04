@@ -15,8 +15,8 @@ use crate::ocr::OcrResult;
 pub use tesseract::list_tesseract_languages;
 
 pub(crate) use layout::{
-    build_avoid_rects, choose_fixed_font_size, fit_text_to_box, has_avoid_below, resolve_overlap,
-    PlacedRect, ResolveOverlapConfig,
+    PlacedRect, ResolveOverlapConfig, build_avoid_rects, choose_fixed_font_size, fit_text_to_box,
+    has_avoid_below, resolve_overlap,
 };
 
 pub fn extract_lines(image_bytes: &[u8], ocr_languages: &str) -> Result<OcrResult> {

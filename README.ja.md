@@ -60,12 +60,14 @@ sudo make install
 ./target/release/llm-translator-rust
 ```
 補足:
-- macOS/Linux は `/usr/local/bin` が既定（必要なら `sudo make install`）
+- macOS/Linux default: `$XDG_RUNTIME_DIR` if set, otherwise `/usr/local/bin` (use `sudo make install` if needed)
 - Windows (MSYS/Git Bash) は `%USERPROFILE%/.cargo/bin`
-- `make` は `build_env.toml` を生成し、バイナリに埋め込みます（ポータブル配布時にファイルは不要）。
+- `make` は `build/build_env.toml` を生成し、バイナリに埋め込みます（ポータブル配布時にファイルは不要）。
 - `make` に環境変数を渡してパスを上書きできます。例:
-  `BASE_DIRECTORY=~/.llm-translator-rust BIN_DIRECTORY=target/release INSTALL_DIRECTORY=/usr/local/bin SETTINGS_FILE=~/.llm-translator-rust/settings.toml BUILD_ENV_PATH=build_env.toml make`
-- `make install` は `settings.toml` が無い場合 `baseDirectory` にコピーします。
+- You can override paths via env vars passed to `make`, e.g.
+  `DATA_DIRECTORY=$XDG_DATA_HOME/llm-translator-rust CONFIG_DIRECTORY=$XDG_CONFIG_HOME/llm-translator-rust RUNTIME_DIRECTORY=$XDG_RUNTIME_DIR BIN_DIRECTORY=target/release BUILD_ENV_PATH=build/build_env.toml make`
+- `make install` は `settings.toml` が無い場合、設定ファイルの保存先（既定は XDG config）にコピーします。
+- `make install` copies headers from `ext/` into `$XDG_DATA_HOME/llm-translator-rust` if they do not exist.
 
 ## クイックスタート
 
@@ -115,6 +117,7 @@ echo 最高だね | llm-translator-rust -l en --slang
 
 # 辞書（品詞・活用）
 echo 猫 | llm-translator-rust --pos -l en
+echo play | llm-translator-rust --pos noun,verb -l en
 
 # ファイル翻訳
 cat foobar.txt | llm-translator-rust -l en
@@ -164,7 +167,7 @@ llm-translator-rust --data ./docs -l ja
 ## 上書きモード (--overwrite)
 
 `--overwrite` は `--data` で指定したファイル/ディレクトリに上書きで書き込みます。
-書き込み前に `~/.llm-translator-rust/backup` へバックアップします。
+書き込み前に `$XDG_DATA_HOME/llm-translator-rust/backup` へバックアップします。
 保持期間は `settings.toml` の `[system].backup_ttl_days`（既定: 30）で制御します。
 
 ```bash
@@ -184,12 +187,13 @@ llm-translator-rust --data ./slide.pdf -l en --out ./translated.pdf
 
 ## 辞書機能（--pos）
 
-`--pos` は入力語に対する辞書形式の情報を返します。
+`--pos` は入力語に対する辞書形式の情報を返します。品詞を指定して絞り込むこともできます（カンマ区切り）。英語の品詞名でも指定でき、可能ならソース言語にマッピングします（英語は常にフォールバック）。
 
 使い方:
 
 ```
 echo 猫 | llm-translator-rust --pos -l en
+echo play | llm-translator-rust --pos noun,verb -l en
 ```
 
 出力例（ラベルは source language で出力されます）:
@@ -330,11 +334,11 @@ choco install tesseract ffmpeg
   - `~/.llm-translator/.cache/meta.json`（`HOME` 未設定時は `./.llm-translator/.cache/meta.json`）
 - `--show-models-list` で `provider:model` 形式の一覧を表示します。
 - `--show-whisper-models` で Whisper のモデル名一覧を表示します。
-- `--pos` は辞書形式で訳語・読み・別訳・品詞・活用・使用例を返します。
+- `--pos [noun,verb]` は辞書形式で訳語・読み・別訳・品詞・活用・使用例を返します（省略で全品詞）。
 - `--correction` は入力文の校正結果と理由を返します。
 - `--whisper-model` で音声文字起こしのモデル名/パスを指定できます。
 - `--model` を省略した場合は `meta.json` の `lastUsingModel` を優先します（未設定/無効なら従来の解決方法にフォールバック）。
-- 履歴は `meta.json` に保存します。出力先は `~/.llm-translator-rust/.cache/dest/<md5>` です。
+- 履歴は `meta.json` に保存します。出力先は `$XDG_DATA_HOME/llm-translator-rust/.cache/dest/<md5>` です。
 - 画像/PDF は OCR（tesseract）で抽出した文字を LLM で正規化し、番号付き注釈とフッター一覧を再レンダリングします。
 - Office（docx/xlsx/pptx）は XML 内のテキストを置き換えて出力します。
 - 出力の MIME は入力に合わせます（png は png、pdf は pdf）。
@@ -357,8 +361,8 @@ choco install tesseract ffmpeg
 
 設定ファイルは次の優先順で読み込まれます（上ほど優先）:
 
-1. `~/.llm-translator-rust/settings.local.toml`
-2. `~/.llm-translator-rust/settings.toml`
+1. `$XDG_CONFIG_HOME/llm-translator-rust/settings.local.toml`（fallback: `~/.config/llm-translator-rust/settings.local.toml`）
+2. `$XDG_CONFIG_HOME/llm-translator-rust/settings.toml` (fallback: `~/.config/llm-translator-rust/settings.toml`)
 3. `./settings.local.toml`
 4. `./settings.toml`
 
@@ -427,18 +431,19 @@ eng = "英語"
 |  | `--show-enabled-styles` | 有効なスタイルキーを表示 |  |
 |  | `--show-models-list` | 取得済みモデル一覧を表示（provider:model） |  |
 |  | `--show-whisper-models` | Whisper モデル名の一覧を表示 |  |
-|  | `--pos` | 品詞・活用などの辞書形式で出力 |  |
+|  | `--pos [noun,verb]` | 品詞・活用などの辞書形式で出力 |  |
 |  | `--correction` | 入力文の校正（指摘）を行う |  |
 |  | `--details` | 詳細翻訳（全スタイル） |  |
 |  | `--report` | 翻訳レポートを生成（html/xml/json） |  |
 |  | `--report-out` | レポートの出力先 |  |
 |  | `--show-histories` | 翻訳履歴を表示 |  |
+|  | `--show-trend` | 翻訳トレンド（カテゴリ/キーワード）を表示 |  |
 |  | `--with-using-tokens` | トークン使用量を付加 |  |
 |  | `--with-using-model` | 使用モデル名を付加 |  |
 |  | `--force` | MIME 判定が不確かな場合でもテキスト扱いで翻訳 |  |
 |  | `--debug-ocr` | OCR デバッグ用の bbox 画像/JSON を出力 |  |
 |  | `--whisper-model` | Whisper モデル名またはパス |  |
-|  | `--overwrite` | 入力ファイル/ディレクトリを上書き（バックアップは `~/.llm-translator-rust/backup`） |  |
+|  | `--overwrite` | 入力ファイル/ディレクトリを上書き（バックアップは `$XDG_DATA_HOME/llm-translator-rust/backup`） |  |
 |  | `--directory-translation-threads` | ディレクトリ翻訳の並列数 |  |
 |  | `--ignore-translation-file` | ディレクトリ翻訳の無視パターン（gitignore 形式） |  |
 | `-o` | `--out` | 出力先（ファイル/ディレクトリ） |  |
@@ -446,6 +451,7 @@ eng = "英語"
 | `-i` | `--interactive` | インタラクティブモード |  |
 | `-r` | `--read-settings` | 追加の設定 TOML を読み込む |  |
 |  | `--server` | HTTP サーバーを起動（`ADDR` は settings または `0.0.0.0:11223` が既定） |  |
+|  | `--client` | Web クライアントを起動（`--server` 必須、`ADDR` は settings または `0.0.0.0:11222` が既定） |  |
 |  | `--mcp` | MCP サーバーを stdio で起動 |  |
 | `-h` | `--help` | ヘルプ表示 |  |
 
@@ -458,6 +464,13 @@ llm-translator-rust --server
 llm-translator-rust --server 0.0.0.0:11223
 ```
 
+Web クライアントを起動します（`--server` 必須）。
+
+```bash
+llm-translator-rust --server --client
+llm-translator-rust --server 0.0.0.0:11223 --client 0.0.0.0:11222
+```
+
 `settings.toml` の `[server]` で設定できます。
 
 ```toml
@@ -466,6 +479,20 @@ host = "0.0.0.0"
 port = 11223
 tmp_dir = "/tmp/llm-translator-rust"
 ```
+
+`settings.toml` の `[client]` で設定できます。
+
+```toml
+[client]
+host = "0.0.0.0"
+port = 11222
+```
+
+追加のエンドポイント（Web クライアントで使用）:
+
+- `GET /histories`
+- `GET /trend`
+- `GET /settings`
 
 リクエストは JSON の `POST /translate`（`text` か `data` のどちらか）です。
 

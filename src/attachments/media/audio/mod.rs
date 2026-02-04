@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -6,7 +6,7 @@ use std::process::{Command, Stdio};
 use tempfile::tempdir;
 use tracing::info;
 use whisper_rs::{
-    get_lang_str, FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters,
+    FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, get_lang_str,
 };
 
 use crate::build_env;
@@ -101,18 +101,14 @@ async fn transcribe_audio(
     if !outcome.text.trim().is_empty() {
         return Ok(outcome.text);
     }
-    if forced_lang.is_none() {
-        if let Some(detected) = outcome.detected_lang.as_deref() {
-            let retry = transcribe_audio_with_params(
-                wav_path,
-                Some(detected),
-                whisper_model_override,
-                true,
-            )
-            .await?;
-            if !retry.text.trim().is_empty() {
-                return Ok(retry.text);
-            }
+    if forced_lang.is_none()
+        && let Some(detected) = outcome.detected_lang.as_deref()
+    {
+        let retry =
+            transcribe_audio_with_params(wav_path, Some(detected), whisper_model_override, true)
+                .await?;
+        if !retry.text.trim().is_empty() {
+            return Ok(retry.text);
         }
     }
 
@@ -141,18 +137,18 @@ async fn transcribe_audio(
     if !outcome.text.trim().is_empty() {
         return Ok(outcome.text);
     }
-    if forced_lang.is_none() {
-        if let Some(detected) = outcome.detected_lang.as_deref() {
-            let retry = transcribe_audio_with_params(
-                &normalized_path,
-                Some(detected),
-                whisper_model_override,
-                true,
-            )
-            .await?;
-            if !retry.text.trim().is_empty() {
-                return Ok(retry.text);
-            }
+    if forced_lang.is_none()
+        && let Some(detected) = outcome.detected_lang.as_deref()
+    {
+        let retry = transcribe_audio_with_params(
+            &normalized_path,
+            Some(detected),
+            whisper_model_override,
+            true,
+        )
+        .await?;
+        if !retry.text.trim().is_empty() {
+            return Ok(retry.text);
         }
     }
 
@@ -178,18 +174,18 @@ async fn transcribe_audio(
     if !outcome.text.trim().is_empty() {
         return Ok(outcome.text);
     }
-    if forced_lang.is_none() {
-        if let Some(detected) = outcome.detected_lang.as_deref() {
-            let retry = transcribe_audio_with_params(
-                &boosted_path,
-                Some(detected),
-                whisper_model_override,
-                true,
-            )
-            .await?;
-            if !retry.text.trim().is_empty() {
-                return Ok(retry.text);
-            }
+    if forced_lang.is_none()
+        && let Some(detected) = outcome.detected_lang.as_deref()
+    {
+        let retry = transcribe_audio_with_params(
+            &boosted_path,
+            Some(detected),
+            whisper_model_override,
+            true,
+        )
+        .await?;
+        if !retry.text.trim().is_empty() {
+            return Ok(retry.text);
         }
     }
 
@@ -276,8 +272,10 @@ fn synthesize_speech(text: &str, target_lang: &str, out_wav: &Path) -> Result<()
     if command_exists("say") {
         #[cfg(target_os = "macos")]
         {
-            std::env::set_var("OS_ACTIVITY_MODE", "disable");
-            std::env::set_var("OS_ACTIVITY_DT_MODE", "0");
+            unsafe {
+                std::env::set_var("OS_ACTIVITY_MODE", "disable");
+                std::env::set_var("OS_ACTIVITY_DT_MODE", "0");
+            }
         }
         let aiff_path = out_wav.with_extension("aiff");
         let status = Command::new("say")

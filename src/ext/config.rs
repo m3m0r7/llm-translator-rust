@@ -32,11 +32,13 @@ fn default_config() -> Config {
         show_models_list: false,
         show_whisper_models: false,
         pos: false,
+        pos_filter: None,
         correction: false,
         details: false,
         report_format: None,
         report_out: None,
         show_histories: false,
+        show_trend: false,
         with_using_tokens: false,
         with_using_model: false,
         with_commentout: false,
@@ -46,14 +48,14 @@ fn default_config() -> Config {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn llm_ext_config_new() -> *mut ExtConfig {
     Box::into_raw(Box::new(ExtConfig {
         inner: default_config(),
     }))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn llm_ext_config_free(config: *mut ExtConfig) {
     if config.is_null() {
         return;
@@ -65,7 +67,7 @@ pub extern "C" fn llm_ext_config_free(config: *mut ExtConfig) {
 
 macro_rules! config_set_string {
     ($name:ident, $field:ident) => {
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         pub extern "C" fn $name(config: *mut ExtConfig, value: *const c_char) -> bool {
             let Some(config) = (unsafe { config.as_mut() }) else {
                 set_last_error("config is null");
@@ -83,7 +85,7 @@ macro_rules! config_set_string {
 
 macro_rules! config_get_string {
     ($name:ident, $field:ident) => {
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         pub extern "C" fn $name(config: *const ExtConfig) -> *mut c_char {
             let Some(config) = (unsafe { config.as_ref() }) else {
                 set_last_error("config is null");
@@ -96,7 +98,7 @@ macro_rules! config_get_string {
 
 macro_rules! config_set_option_string {
     ($name:ident, $field:ident) => {
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         pub extern "C" fn $name(config: *mut ExtConfig, value: *const c_char) -> bool {
             let Some(config) = (unsafe { config.as_mut() }) else {
                 set_last_error("config is null");
@@ -118,7 +120,7 @@ macro_rules! config_set_option_string {
 
 macro_rules! config_get_option_string {
     ($name:ident, $field:ident) => {
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         pub extern "C" fn $name(config: *const ExtConfig) -> *mut c_char {
             let Some(config) = (unsafe { config.as_ref() }) else {
                 set_last_error("config is null");
@@ -134,7 +136,7 @@ macro_rules! config_get_option_string {
 
 macro_rules! config_set_bool {
     ($name:ident, $field:ident) => {
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         pub extern "C" fn $name(config: *mut ExtConfig, value: bool) -> bool {
             let Some(config) = (unsafe { config.as_mut() }) else {
                 set_last_error("config is null");
@@ -148,7 +150,7 @@ macro_rules! config_set_bool {
 
 macro_rules! config_get_bool {
     ($name:ident, $field:ident) => {
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         pub extern "C" fn $name(config: *const ExtConfig) -> bool {
             let Some(config) = (unsafe { config.as_ref() }) else {
                 set_last_error("config is null");
@@ -161,7 +163,7 @@ macro_rules! config_get_bool {
 
 macro_rules! config_set_option_usize {
     ($name:ident, $field:ident) => {
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         pub extern "C" fn $name(config: *mut ExtConfig, value: isize) -> bool {
             let Some(config) = (unsafe { config.as_mut() }) else {
                 set_last_error("config is null");
@@ -179,7 +181,7 @@ macro_rules! config_set_option_usize {
 
 macro_rules! config_get_option_usize {
     ($name:ident, $field:ident) => {
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         pub extern "C" fn $name(config: *const ExtConfig) -> isize {
             let Some(config) = (unsafe { config.as_ref() }) else {
                 set_last_error("config is null");
@@ -258,7 +260,7 @@ config_get_bool!(llm_ext_config_get_verbose, verbose);
 config_set_option_string!(llm_ext_config_set_whisper_model, whisper_model);
 config_get_option_string!(llm_ext_config_get_whisper_model, whisper_model);
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn llm_ext_config_clear_ignore_translation_files(config: *mut ExtConfig) -> bool {
     let Some(config) = (unsafe { config.as_mut() }) else {
         set_last_error("config is null");
@@ -268,7 +270,7 @@ pub extern "C" fn llm_ext_config_clear_ignore_translation_files(config: *mut Ext
     true
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn llm_ext_config_add_ignore_translation_file(
     config: *mut ExtConfig,
     value: *const c_char,
@@ -285,7 +287,7 @@ pub extern "C" fn llm_ext_config_add_ignore_translation_file(
     true
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn llm_ext_config_ignore_translation_files_len(config: *const ExtConfig) -> usize {
     let Some(config) = (unsafe { config.as_ref() }) else {
         set_last_error("config is null");
@@ -294,7 +296,7 @@ pub extern "C" fn llm_ext_config_ignore_translation_files_len(config: *const Ext
     config.inner.ignore_translation_files.len()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn llm_ext_config_get_ignore_translation_file(
     config: *const ExtConfig,
     index: usize,

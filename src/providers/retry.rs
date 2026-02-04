@@ -1,5 +1,5 @@
-use reqwest::header::HeaderMap;
 use reqwest::StatusCode;
+use reqwest::header::HeaderMap;
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::warn;
@@ -43,10 +43,10 @@ pub(crate) async fn wait_with_backoff(
     retry_after: Option<Duration>,
 ) -> Duration {
     let mut wait = delay;
-    if let Some(retry_after) = retry_after {
-        if retry_after > wait {
-            wait = retry_after;
-        }
+    if let Some(retry_after) = retry_after
+        && retry_after > wait
+    {
+        wait = retry_after;
     }
     warn!(
         "{} rate limited; retrying in {:.1}s (attempt {}/{})",

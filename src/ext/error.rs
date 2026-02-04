@@ -31,7 +31,7 @@ pub(crate) fn string_to_c(value: &str) -> *mut c_char {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn llm_ext_free_string(value: *mut c_char) {
     if value.is_null() {
         return;
@@ -41,7 +41,7 @@ pub extern "C" fn llm_ext_free_string(value: *mut c_char) {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn llm_ext_last_error_message() -> *mut c_char {
     match take_last_error() {
         Some(message) => string_to_c(&message),

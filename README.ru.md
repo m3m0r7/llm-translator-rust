@@ -61,11 +61,13 @@ sudo make install
 ```
 
 Примечания:
-- macOS/Linux по умолчанию: `/usr/local/bin` (используйте `sudo make install`, если нужно)
+- macOS/Linux default: `$XDG_RUNTIME_DIR` if set, otherwise `/usr/local/bin` (use `sudo make install` if needed)
 - Windows (MSYS/Git Bash): `%USERPROFILE%/.cargo/bin`
-- make writes build_env.toml and embeds it into the binary (portable builds don't need the file at runtime).
-- Override paths via env vars passed to make, e.g. BASE_DIRECTORY=~/.llm-translator-rust BIN_DIRECTORY=target/release INSTALL_DIRECTORY=/usr/local/bin SETTINGS_FILE=~/.llm-translator-rust/settings.toml BUILD_ENV_PATH=build_env.toml make
-- `make install` copies `settings.toml` to `baseDirectory` if it does not exist.
+- make writes build/build_env.toml and embeds it into the binary (portable builds don't need the file at runtime).
+- You can override paths via env vars passed to `make`, e.g.
+  `DATA_DIRECTORY=$XDG_DATA_HOME/llm-translator-rust CONFIG_DIRECTORY=$XDG_CONFIG_HOME/llm-translator-rust RUNTIME_DIRECTORY=$XDG_RUNTIME_DIR BIN_DIRECTORY=target/release BUILD_ENV_PATH=build/build_env.toml make`
+- `make install` copies `settings.toml` to the settings path (XDG config by default) if it does not exist.
+- `make install` copies headers from `ext/` into `$XDG_DATA_HOME/llm-translator-rust` if they do not exist.
 
 ## Quickstart
 
@@ -115,6 +117,7 @@ echo Awesome | llm-translator-rust -l ja --slang
 
 # Dictionary (part of speech/inflections)
 echo 猫 | llm-translator-rust --pos -l en
+echo play | llm-translator-rust --pos noun,verb -l en
 
 # File translation
 cat foobar.txt | llm-translator-rust -l en
@@ -162,7 +165,7 @@ llm-translator-rust --data ./docs -l ja
 ## Overwrite mode (--overwrite)
 
 `--overwrite` перезаписывает файлы/директории, переданные через `--data`.
-Перед записью каждый файл сохраняется в `~/.llm-translator-rust/backup`.
+Перед записью каждый файл сохраняется в `$XDG_DATA_HOME/llm-translator-rust/backup`.
 Срок хранения задаётся в `settings.toml` `[system].backup_ttl_days` (по умолчанию 30).
 
 ```bash
@@ -182,12 +185,13 @@ llm-translator-rust --data ./slide.pdf -l en --out ./translated.pdf
 
 ## Dictionary (--pos)
 
-`--pos` возвращает словарные сведения о вводимом слове.
+`--pos` возвращает словарные сведения о вводимом слове. Можно фильтровать по части речи (через запятую); английские названия POS принимаются и по возможности сопоставляются с языком источника.
 
 Использование:
 
 ```
 echo 猫 | llm-translator-rust --pos -l en
+echo play | llm-translator-rust --pos noun,verb -l en
 ```
 
 Пример вывода (метки соответствуют языку исходника):
@@ -302,11 +306,11 @@ Translated:
   - `~/.llm-translator/.cache/meta.json` (fallback: `./.llm-translator/.cache/meta.json`)
 - `--show-models-list` печатает список `provider:model` построчно.
 - `--show-whisper-models` показывает доступные модели whisper.
-- `--pos` возвращает словарные детали.
+- `--pos [noun,verb]` возвращает словарные детали.
 - `--correction` возвращает исправления и причины на языке источника.
 - `--whisper-model` выбирает модель транскрибации аудио.
 - Если `--model` не задан, используется `lastUsingModel` из `meta.json`.
-- История хранится в `meta.json`. Выходные файлы пишутся в `~/.llm-translator-rust/.cache/dest/<md5>`.
+- История хранится в `meta.json`. Выходные файлы пишутся в `$XDG_DATA_HOME/llm-translator-rust/.cache/dest/<md5>`.
 - Изображения/PDF используют OCR (tesseract), нормализуют текст через LLM и перерисовывают нумерованный оверлей + список внизу.
 - Office‑файлы (docx/xlsx/pptx) переписываются путём перевода текстовых узлов XML.
 - MIME вывода соответствует MIME входа.
@@ -329,8 +333,8 @@ Provider model APIs:
 
 Порядок загрузки файлов настроек (сверху — выше приоритет):
 
-1. `~/.llm-translator-rust/settings.local.toml`
-2. `~/.llm-translator-rust/settings.toml`
+1. `$XDG_CONFIG_HOME/llm-translator-rust/settings.local.toml (fallback: ~/.config/llm-translator-rust/settings.local.toml)`
+2. `$XDG_CONFIG_HOME/llm-translator-rust/settings.toml` (fallback: `~/.config/llm-translator-rust/settings.toml`)
 3. `./settings.local.toml`
 4. `./settings.toml`
 
@@ -400,7 +404,7 @@ eng = "英語"
 |  | `--show-enabled-styles` | Показать стили |  |
 |  | `--show-models-list` | Показать список моделей из кэша |  |
 |  | `--show-whisper-models` | Показать доступные модели whisper |  |
-|  | `--pos` | Словарный вывод (части речи/формы) |  |
+|  | `--pos [noun,verb]` | Словарный вывод (части речи/формы) |  |
 |  | `--correction` | Проверка и замечания по тексту |  |
 |  | `--details` | Detailed translations across all formal styles |  |
 |  | `--report` | Generate a translation report (html/xml/json) |  |
@@ -411,7 +415,7 @@ eng = "英語"
 |  | `--force` | Форсировать перевод как текст при неопределённом MIME |  |
 |  | `--debug-ocr` | OCR‑debug оверлеи/JSON |  |
 |  | `--whisper-model` | Модель Whisper (имя или путь) |  |
-|  | `--overwrite` | Перезаписать входные файлы (backup в `~/.llm-translator-rust/backup`) |  |
+|  | `--overwrite` | Перезаписать входные файлы (backup в `$XDG_DATA_HOME/llm-translator-rust/backup`) |  |
 |  | `--directory-translation-threads` | Параллелизм для директорий |  |
 |  | `--ignore-translation-file` | Исключения для перевода директорий (gitignore‑style) |  |
 | `-o` | `--out` | Путь вывода |  |

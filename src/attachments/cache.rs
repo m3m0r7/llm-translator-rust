@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use crate::providers::{Provider, ProviderUsage};
 use crate::{TranslateOptions, Translator};
 
-use super::util::{collapse_whitespace, is_numeric_like, sanitize_ocr_text, split_text_bounds};
 use super::AttachmentTranslation;
+use super::util::{collapse_whitespace, is_numeric_like, sanitize_ocr_text, split_text_bounds};
 
 pub(crate) struct TranslationCache {
     map: HashMap<String, String>,

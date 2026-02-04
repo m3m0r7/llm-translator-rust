@@ -1,13 +1,13 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tera::{Context as TeraContext, Tera};
 
+use crate::Translator;
 use crate::languages::LanguageRegistry;
 use crate::providers::{Provider, ProviderUsage, ToolSpec};
 use crate::settings::Settings;
 use crate::translations::TranslateOptions;
-use crate::Translator;
 
 const TOOL_NAME: &str = "correct_text";
 
@@ -48,11 +48,11 @@ pub fn format_correction_output(result: &CorrectionResult) -> String {
     let mut output = String::new();
     output.push_str(result.corrected.as_str());
     output.push('\n');
-    if let Some(markers) = result.markers.as_deref() {
-        if !markers.trim().is_empty() {
-            output.push_str(markers);
-            output.push('\n');
-        }
+    if let Some(markers) = result.markers.as_deref()
+        && !markers.trim().is_empty()
+    {
+        output.push_str(markers);
+        output.push('\n');
     }
     if !result.reasons.is_empty() {
         output.push('\n');

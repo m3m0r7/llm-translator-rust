@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use std::fs;
 use std::process::Command;
 use tempfile::tempdir;
@@ -8,10 +8,10 @@ use crate::providers::Provider;
 use crate::{TranslateOptions, Translator};
 
 use super::audio::command_exists;
-use crate::attachments::cache::TranslationCache;
 use crate::attachments::AttachmentTranslation;
+use crate::attachments::cache::TranslationCache;
 
-use super::image::{translate_image_with_cache, ImageTranslateRequest};
+use super::image::{ImageTranslateRequest, translate_image_with_cache};
 use super::ocr::OcrDebugConfig;
 
 pub(crate) async fn translate_pdf<P: Provider + Clone>(

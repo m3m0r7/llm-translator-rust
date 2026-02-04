@@ -5,11 +5,19 @@ use std::path::{Path, PathBuf};
 use crate::attachments;
 use crate::correction;
 use crate::data;
+use crate::history_tags;
 use crate::model_registry;
 use crate::providers;
 use crate::settings;
 use crate::translations::TranslateOptions;
-use crate::{resolve_model, resolve_ocr_languages, validate_lang_codes, Config, Translator};
+use crate::{
+    Config, HistoryRecordInput, ProviderKind, Translator, normalize_formality_for_history,
+    normalize_lang_for_history, record_history, resolve_model, resolve_ocr_languages,
+    validate_lang_codes,
+};
+
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 
 use super::models::{CorrectionPayload, ServerContent, ServerRequest, ServerResponse};
 use super::state::ServerState;
@@ -22,6 +30,24 @@ use super::util::{
 pub(crate) struct ServerError {
     pub(crate) status: axum::http::StatusCode,
     pub(crate) message: String,
+}
+
+#[derive(Clone, Copy)]
+enum ResponseFormat {
+    Path,
+    Base64,
+}
+
+fn resolve_response_format(request: &ServerRequest) -> ResponseFormat {
+    match request
+        .response_format
+        .as_deref()
+        .map(|value| value.trim().to_lowercase())
+        .as_deref()
+    {
+        Some("base64") => ResponseFormat::Base64,
+        _ => ResponseFormat::Path,
+    }
 }
 
 impl ServerError {
@@ -50,19 +76,25 @@ pub(crate) async fn translate_request(
     state: &ServerState,
     request: ServerRequest,
 ) -> Result<ServerResponse, ServerError> {
-    if request.text.is_some() && request.data.is_some() {
+    let has_data = request.data.is_some() || request.data_base64.is_some();
+    if request.text.is_some() && has_data {
         return Err(ServerError::bad_request(
             "text and data cannot be provided together",
+        ));
+    }
+    if request.data.is_some() && request.data_base64.is_some() {
+        return Err(ServerError::bad_request(
+            "data and data_base64 cannot be provided together",
         ));
     }
 
     let config = config_from_request(&request);
     let registry = state.registry.clone();
     let mut settings = state.settings.clone();
-    if let Some(model) = config.whisper_model.as_deref() {
-        if !model.trim().is_empty() {
-            settings.whisper_model = Some(model.to_string());
-        }
+    if let Some(model) = config.whisper_model.as_deref()
+        && !model.trim().is_empty()
+    {
+        settings.whisper_model = Some(model.to_string());
     }
 
     validate_lang_codes(&config, &registry)
@@ -92,8 +124,11 @@ pub(crate) async fn translate_request(
     )
     .await
     .map_err(|err| ServerError::bad_request(err.to_string()))?;
+    let provider_kind = selection.provider;
+    let model_name = model.clone();
     let provider = providers::build_provider(selection.provider, key, model.clone());
     let translator = Translator::new(provider, settings.clone(), registry);
+    let response_format = resolve_response_format(&request);
     let options = TranslateOptions {
         lang: config.lang.clone(),
         formality: config.formal.clone(),
@@ -116,6 +151,56 @@ pub(crate) async fn translate_request(
         return translate_correction(&translator, &options, text).await;
     }
 
+    if let Some(data_base64) = request.data_base64.as_deref() {
+        let attachment = load_attachment_from_base64(
+            data_base64,
+            request.data_name.as_deref(),
+            config.data_mime.as_deref(),
+            config.force_translation,
+            &translator,
+        )
+        .await?;
+
+        let output = attachments::translate_attachment(
+            &attachment,
+            &ocr_languages,
+            &translator,
+            &options,
+            config.with_commentout,
+            config.debug_ocr,
+            config.force_translation,
+            None,
+        )
+        .await
+        .map_err(ServerError::from)?
+        .ok_or_else(|| ServerError::bad_request("unsupported attachment mime"))?;
+
+        if let Err(err) = record_attachment_history(
+            provider_kind,
+            &model_name,
+            &options,
+            settings.history_limit,
+            attachment
+                .name
+                .clone()
+                .unwrap_or_else(|| "upload".to_string()),
+            &output,
+        ) {
+            tracing::warn!("failed to record history: {}", err.message);
+        }
+
+        let content = content_from_attachment(
+            &attachment,
+            &output,
+            config.force_translation,
+            resolve_tmp_dir(&settings)?,
+            response_format,
+        )?;
+        return Ok(ServerResponse {
+            contents: vec![content],
+        });
+    }
+
     if let Some(path) = config.data.as_deref() {
         let path = Path::new(path);
         let meta = std::fs::metadata(path)
@@ -129,6 +214,9 @@ pub(crate) async fn translate_request(
                 &settings,
                 &ocr_languages,
                 &config,
+                provider_kind,
+                &model_name,
+                response_format,
             )
             .await?;
             return Ok(ServerResponse { contents });
@@ -141,6 +229,9 @@ pub(crate) async fn translate_request(
             &settings,
             &ocr_languages,
             &config,
+            provider_kind,
+            &model_name,
+            response_format,
         )
         .await?;
         return Ok(ServerResponse {
@@ -158,6 +249,46 @@ pub(crate) async fn translate_request(
         .exec(text.as_str(), options)
         .await
         .map_err(ServerError::from)?;
+
+    let mut tags: Option<Vec<String>> = None;
+    match history_tags::generate_history_tags(
+        &translator,
+        text.as_str(),
+        &config.source_lang,
+        &config.lang,
+    )
+    .await
+    {
+        Ok(result) => {
+            if (!result.categories.is_empty() || !result.keywords.is_empty())
+                && let Err(err) = model_registry::update_trend(&result.categories, &result.keywords)
+            {
+                tracing::warn!("failed to update trend meta: {}", err);
+            }
+            if !result.tags.is_empty() {
+                tags = Some(result.tags);
+            }
+        }
+        Err(err) => {
+            tracing::warn!("failed to generate history tags: {}", err);
+        }
+    }
+
+    if let Err(err) = record_history(HistoryRecordInput {
+        provider: provider_kind,
+        model: &model_name,
+        src_path: None,
+        history_limit: settings.history_limit,
+        input_text: text.as_str(),
+        attachment_mime: None,
+        output_text: &exec.text,
+        source_lang: &config.source_lang,
+        target_lang: &config.lang,
+        formal: &config.formal,
+        tags,
+    }) {
+        tracing::warn!("failed to record history: {}", err);
+    }
     Ok(ServerResponse {
         contents: vec![ServerContent {
             mime: data::TEXT_MIME.to_string(),
@@ -197,11 +328,13 @@ fn config_from_request(request: &ServerRequest) -> Config {
         show_models_list: false,
         show_whisper_models: false,
         pos: false,
+        pos_filter: None,
         correction: request.correction.unwrap_or(false),
         details: false,
         report_format: None,
         report_out: None,
         show_histories: false,
+        show_trend: false,
         with_using_tokens: false,
         with_using_model: false,
         with_commentout: request.with_commentout.unwrap_or(false),
@@ -211,6 +344,7 @@ fn config_from_request(request: &ServerRequest) -> Config {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn translate_file<P: providers::Provider + Clone>(
     path: &Path,
     translator: &Translator<P>,
@@ -218,6 +352,9 @@ async fn translate_file<P: providers::Provider + Clone>(
     settings: &settings::Settings,
     ocr_languages: &str,
     config: &Config,
+    provider: ProviderKind,
+    model: &str,
+    response_format: ResponseFormat,
 ) -> Result<ServerContent, ServerError> {
     let attachment = load_attachment_with_detection(
         path,
@@ -242,14 +379,27 @@ async fn translate_file<P: providers::Provider + Clone>(
     .map_err(ServerError::from)?
     .ok_or_else(|| ServerError::bad_request("unsupported attachment mime"))?;
 
+    if let Err(err) = record_attachment_history(
+        provider,
+        model,
+        options,
+        settings.history_limit,
+        path.to_string_lossy().to_string(),
+        &output,
+    ) {
+        tracing::warn!("failed to record history: {}", err.message);
+    }
+
     content_from_attachment(
         &attachment,
         &output,
         config.force_translation,
         resolve_tmp_dir(settings)?,
+        response_format,
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn translate_directory<P: providers::Provider + Clone>(
     path: &Path,
     translator: &Translator<P>,
@@ -257,6 +407,9 @@ async fn translate_directory<P: providers::Provider + Clone>(
     settings: &settings::Settings,
     ocr_languages: &str,
     config: &Config,
+    provider: ProviderKind,
+    model: &str,
+    response_format: ResponseFormat,
 ) -> Result<Vec<ServerContent>, ServerError> {
     let files = collect_directory_files(path).map_err(ServerError::from)?;
     let ignore = build_translation_ignore(
@@ -278,10 +431,10 @@ async fn translate_directory<P: providers::Provider + Clone>(
             let ignore = ignore.clone();
             let tmp_dir = tmp_dir.clone();
             async move {
-                if let Some(ignore) = ignore {
-                    if ignore.is_ignored(&file) {
-                        return Ok(None);
-                    }
+                if let Some(ignore) = ignore
+                    && ignore.is_ignored(&file)
+                {
+                    return Ok(None);
                 }
                 let attachment = load_attachment_with_detection(
                     &file,
@@ -311,11 +464,23 @@ async fn translate_directory<P: providers::Provider + Clone>(
                     Some(value) => value,
                     None => return Ok(None),
                 };
+                if let Err(err) = record_attachment_history(
+                    provider,
+                    model,
+                    &options,
+                    settings.history_limit,
+                    file.to_string_lossy().to_string(),
+                    &output,
+                ) {
+                    tracing::warn!("failed to record history: {}", err.message);
+                }
+
                 let content = content_from_attachment(
                     &attachment,
                     &output,
                     config.force_translation,
                     tmp_dir,
+                    response_format,
                 )?;
                 Ok(Some(content))
             }
@@ -387,11 +552,94 @@ async fn load_attachment_with_detection<P: providers::Provider + Clone>(
     }
 }
 
+async fn load_attachment_from_base64<P: providers::Provider + Clone>(
+    data_base64: &str,
+    name: Option<&str>,
+    mime_hint: Option<&str>,
+    force_translation: bool,
+    translator: &Translator<P>,
+) -> Result<data::DataAttachment, ServerError> {
+    let raw = data_base64.trim();
+    let payload = raw
+        .split_once("base64,")
+        .map(|(_, value)| value)
+        .unwrap_or(raw);
+    let bytes = BASE64
+        .decode(payload)
+        .map_err(|_| ServerError::bad_request("failed to decode base64 data"))?;
+    let name = name.map(|value| value.to_string());
+    let mut attachment = data::DataAttachment {
+        bytes,
+        mime: data::OCTET_STREAM_MIME.to_string(),
+        name,
+    };
+    let hint = mime_hint.unwrap_or("auto");
+    if !hint.eq_ignore_ascii_case("auto") {
+        attachment.mime = hint.to_string();
+        return Ok(attachment);
+    }
+    let detection = attachments::detect_mime_with_llm(&attachment, translator)
+        .await
+        .map_err(ServerError::from)?;
+    let normalized = data::normalize_mime_hint(&detection.mime);
+    if detection.confident {
+        if let Some(mime) = normalized {
+            attachment.mime = mime;
+        } else if force_translation {
+            attachment.mime = data::TEXT_MIME.to_string();
+        } else {
+            return Err(ServerError::bad_request(format!(
+                "unable to determine supported mime (detected '{}')",
+                detection.mime
+            )));
+        }
+    } else if force_translation {
+        attachment.mime = data::TEXT_MIME.to_string();
+    } else {
+        return Err(ServerError::bad_request(
+            "unable to determine mime (low confidence)",
+        ));
+    }
+    Ok(attachment)
+}
+
+fn record_attachment_history(
+    provider: ProviderKind,
+    model: &str,
+    options: &TranslateOptions,
+    history_limit: usize,
+    src: String,
+    output: &attachments::AttachmentTranslation,
+) -> Result<(), ServerError> {
+    let datetime = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+        .to_string();
+    let dest = model_registry::write_history_dest_bytes(&output.bytes, &datetime)
+        .map_err(ServerError::from)?;
+    let entry = model_registry::HistoryEntry {
+        datetime,
+        model: format!("{}:{}", provider.as_str(), model),
+        formal: normalize_formality_for_history(&options.formality),
+        mime: output.mime.clone(),
+        kind: model_registry::HistoryType::Attachment,
+        source_language: normalize_lang_for_history(&options.source_lang),
+        target_language: normalize_lang_for_history(&options.lang),
+        tags: None,
+        src,
+        dest,
+    };
+    model_registry::record_history(entry, history_limit).map_err(ServerError::from)?;
+    Ok(())
+}
+
 fn content_from_attachment(
     attachment: &data::DataAttachment,
     output: &attachments::AttachmentTranslation,
     force_translation: bool,
     tmp_dir: PathBuf,
+    response_format: ResponseFormat,
 ) -> Result<ServerContent, ServerError> {
     if is_text_mime(&output.mime) {
         let original = decode_text(&attachment.bytes, force_translation)
@@ -407,15 +655,29 @@ fn content_from_attachment(
         });
     }
 
-    let translated_path =
-        write_temp_file(&output.bytes, &output.mime, &tmp_dir).map_err(ServerError::from)?;
-    Ok(ServerContent {
-        mime: output.mime.clone(),
-        format: "path".to_string(),
-        original: None,
-        translated: translated_path,
-        correction: None,
-    })
+    match response_format {
+        ResponseFormat::Base64 => {
+            let encoded = BASE64.encode(&output.bytes);
+            Ok(ServerContent {
+                mime: output.mime.clone(),
+                format: "base64".to_string(),
+                original: None,
+                translated: encoded,
+                correction: None,
+            })
+        }
+        ResponseFormat::Path => {
+            let translated_path = write_temp_file(&output.bytes, &output.mime, &tmp_dir)
+                .map_err(ServerError::from)?;
+            Ok(ServerContent {
+                mime: output.mime.clone(),
+                format: "path".to_string(),
+                original: None,
+                translated: translated_path,
+                correction: None,
+            })
+        }
+    }
 }
 
 async fn translate_correction<P: providers::Provider + Clone>(

@@ -10,14 +10,14 @@ pub struct ExtSettings {
     pub(crate) inner: Settings,
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn llm_ext_settings_new() -> *mut ExtSettings {
     Box::into_raw(Box::new(ExtSettings {
         inner: Settings::default(),
     }))
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn llm_ext_settings_free(settings: *mut ExtSettings) {
     if settings.is_null() {
         return;
@@ -27,7 +27,7 @@ pub extern "C" fn llm_ext_settings_free(settings: *mut ExtSettings) {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn llm_ext_settings_load_from_file(path: *const c_char) -> *mut ExtSettings {
     let path = cstr_to_string(path);
     let loaded = match path.as_deref() {
@@ -45,7 +45,7 @@ pub extern "C" fn llm_ext_settings_load_from_file(path: *const c_char) -> *mut E
 
 macro_rules! settings_set_string {
     ($name:ident, $field:ident) => {
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         pub extern "C" fn $name(settings: *mut ExtSettings, value: *const c_char) -> bool {
             let Some(settings) = (unsafe { settings.as_mut() }) else {
                 set_last_error("settings is null");
@@ -63,7 +63,7 @@ macro_rules! settings_set_string {
 
 macro_rules! settings_get_string {
     ($name:ident, $field:ident) => {
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         pub extern "C" fn $name(settings: *const ExtSettings) -> *mut c_char {
             let Some(settings) = (unsafe { settings.as_ref() }) else {
                 set_last_error("settings is null");
@@ -76,7 +76,7 @@ macro_rules! settings_get_string {
 
 macro_rules! settings_set_option_string {
     ($name:ident, $field:ident) => {
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         pub extern "C" fn $name(settings: *mut ExtSettings, value: *const c_char) -> bool {
             let Some(settings) = (unsafe { settings.as_mut() }) else {
                 set_last_error("settings is null");
@@ -98,7 +98,7 @@ macro_rules! settings_set_option_string {
 
 macro_rules! settings_get_option_string {
     ($name:ident, $field:ident) => {
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         pub extern "C" fn $name(settings: *const ExtSettings) -> *mut c_char {
             let Some(settings) = (unsafe { settings.as_ref() }) else {
                 set_last_error("settings is null");
@@ -114,7 +114,7 @@ macro_rules! settings_get_option_string {
 
 macro_rules! settings_set_bool {
     ($name:ident, $field:ident) => {
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         pub extern "C" fn $name(settings: *mut ExtSettings, value: bool) -> bool {
             let Some(settings) = (unsafe { settings.as_mut() }) else {
                 set_last_error("settings is null");
@@ -128,7 +128,7 @@ macro_rules! settings_set_bool {
 
 macro_rules! settings_get_bool {
     ($name:ident, $field:ident) => {
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         pub extern "C" fn $name(settings: *const ExtSettings) -> bool {
             let Some(settings) = (unsafe { settings.as_ref() }) else {
                 set_last_error("settings is null");
@@ -141,7 +141,7 @@ macro_rules! settings_get_bool {
 
 macro_rules! settings_set_usize {
     ($name:ident, $field:ident) => {
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         pub extern "C" fn $name(settings: *mut ExtSettings, value: usize) -> bool {
             let Some(settings) = (unsafe { settings.as_mut() }) else {
                 set_last_error("settings is null");
@@ -155,7 +155,7 @@ macro_rules! settings_set_usize {
 
 macro_rules! settings_get_usize {
     ($name:ident, $field:ident) => {
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         pub extern "C" fn $name(settings: *const ExtSettings) -> usize {
             let Some(settings) = (unsafe { settings.as_ref() }) else {
                 set_last_error("settings is null");
@@ -168,7 +168,7 @@ macro_rules! settings_get_usize {
 
 macro_rules! settings_set_u64 {
     ($name:ident, $field:ident) => {
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         pub extern "C" fn $name(settings: *mut ExtSettings, value: u64) -> bool {
             let Some(settings) = (unsafe { settings.as_mut() }) else {
                 set_last_error("settings is null");
@@ -182,7 +182,7 @@ macro_rules! settings_set_u64 {
 
 macro_rules! settings_get_u64 {
     ($name:ident, $field:ident) => {
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         pub extern "C" fn $name(settings: *const ExtSettings) -> u64 {
             let Some(settings) = (unsafe { settings.as_ref() }) else {
                 set_last_error("settings is null");
@@ -195,7 +195,7 @@ macro_rules! settings_get_u64 {
 
 macro_rules! settings_set_option_f32 {
     ($name:ident, $field:ident) => {
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         pub extern "C" fn $name(settings: *mut ExtSettings, value: f32) -> bool {
             let Some(settings) = (unsafe { settings.as_mut() }) else {
                 set_last_error("settings is null");
@@ -213,7 +213,7 @@ macro_rules! settings_set_option_f32 {
 
 macro_rules! settings_get_option_f32 {
     ($name:ident, $field:ident) => {
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         pub extern "C" fn $name(settings: *const ExtSettings) -> f32 {
             let Some(settings) = (unsafe { settings.as_ref() }) else {
                 set_last_error("settings is null");
@@ -282,7 +282,7 @@ settings_get_string!(llm_ext_settings_get_server_host, server_host);
 settings_set_option_string!(llm_ext_settings_set_server_tmp_dir, server_tmp_dir);
 settings_get_option_string!(llm_ext_settings_get_server_tmp_dir, server_tmp_dir);
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn llm_ext_settings_set_server_port(settings: *mut ExtSettings, value: u16) -> bool {
     let Some(settings) = (unsafe { settings.as_mut() }) else {
         set_last_error("settings is null");
@@ -295,7 +295,7 @@ pub extern "C" fn llm_ext_settings_set_server_port(settings: *mut ExtSettings, v
     true
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn llm_ext_settings_get_server_port(settings: *const ExtSettings) -> u16 {
     let Some(settings) = (unsafe { settings.as_ref() }) else {
         set_last_error("settings is null");
@@ -304,7 +304,7 @@ pub extern "C" fn llm_ext_settings_get_server_port(settings: *const ExtSettings)
     settings.inner.server_port
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn llm_ext_settings_clear_system_languages(settings: *mut ExtSettings) -> bool {
     let Some(settings) = (unsafe { settings.as_mut() }) else {
         set_last_error("settings is null");
@@ -314,7 +314,7 @@ pub extern "C" fn llm_ext_settings_clear_system_languages(settings: *mut ExtSett
     true
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn llm_ext_settings_add_system_language(
     settings: *mut ExtSettings,
     value: *const c_char,
@@ -331,7 +331,7 @@ pub extern "C" fn llm_ext_settings_add_system_language(
     true
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn llm_ext_settings_system_languages_len(settings: *const ExtSettings) -> usize {
     let Some(settings) = (unsafe { settings.as_ref() }) else {
         set_last_error("settings is null");
@@ -340,7 +340,7 @@ pub extern "C" fn llm_ext_settings_system_languages_len(settings: *const ExtSett
     settings.inner.system_languages.len()
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn llm_ext_settings_get_system_language(
     settings: *const ExtSettings,
     index: usize,
@@ -355,7 +355,7 @@ pub extern "C" fn llm_ext_settings_get_system_language(
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn llm_ext_settings_set_formal(
     settings: *mut ExtSettings,
     key: *const c_char,
@@ -377,7 +377,7 @@ pub extern "C" fn llm_ext_settings_set_formal(
     true
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn llm_ext_settings_get_formal(
     settings: *const ExtSettings,
     key: *const c_char,
@@ -396,7 +396,7 @@ pub extern "C" fn llm_ext_settings_get_formal(
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn llm_ext_settings_remove_formal(
     settings: *mut ExtSettings,
     key: *const c_char,
@@ -413,7 +413,7 @@ pub extern "C" fn llm_ext_settings_remove_formal(
     true
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn llm_ext_settings_formal_len(settings: *const ExtSettings) -> usize {
     let Some(settings) = (unsafe { settings.as_ref() }) else {
         set_last_error("settings is null");

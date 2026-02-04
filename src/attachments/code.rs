@@ -4,9 +4,9 @@ use crate::data;
 use crate::providers::Provider;
 use crate::{TranslateOptions, Translator};
 
+use super::AttachmentTranslation;
 use super::cache::TranslationCache;
 use super::util::should_translate_text;
-use super::AttachmentTranslation;
 
 pub(crate) async fn translate_javascript<P: Provider + Clone>(
     bytes: &[u8],
@@ -512,10 +512,10 @@ fn unescape_js_string(input: &str) -> String {
                         }
                         hex.push(c);
                     }
-                    if let Ok(value) = u32::from_str_radix(&hex, 16) {
-                        if let Some(ch) = char::from_u32(value) {
-                            out.push(ch);
-                        }
+                    if let Ok(value) = u32::from_str_radix(&hex, 16)
+                        && let Some(ch) = char::from_u32(value)
+                    {
+                        out.push(ch);
                     }
                 } else {
                     let mut hex = String::new();
@@ -524,10 +524,10 @@ fn unescape_js_string(input: &str) -> String {
                             hex.push(c);
                         }
                     }
-                    if let Ok(value) = u16::from_str_radix(&hex, 16) {
-                        if let Some(ch) = char::from_u32(value as u32) {
-                            out.push(ch);
-                        }
+                    if let Ok(value) = u16::from_str_radix(&hex, 16)
+                        && let Some(ch) = char::from_u32(value as u32)
+                    {
+                        out.push(ch);
                     }
                 }
             }
@@ -621,38 +621,38 @@ async fn translate_mermaid_line<P: Provider + Clone>(
             i = end;
             continue;
         }
-        if ch == '|' {
-            if let Some(end) = line[i + 1..].find('|') {
-                let end_idx = i + 1 + end;
-                let content = &line[i + 1..end_idx];
-                if should_translate_text(content) {
-                    let translated = cache
-                        .translate_preserve_whitespace(content, translator, options)
-                        .await?;
-                    out.push('|');
-                    out.push_str(&translated);
-                    out.push('|');
-                } else {
-                    out.push_str(&line[i..=end_idx]);
-                }
-                i = end_idx + 1;
-                continue;
+        if ch == '|'
+            && let Some(end) = line[i + 1..].find('|')
+        {
+            let end_idx = i + 1 + end;
+            let content = &line[i + 1..end_idx];
+            if should_translate_text(content) {
+                let translated = cache
+                    .translate_preserve_whitespace(content, translator, options)
+                    .await?;
+                out.push('|');
+                out.push_str(&translated);
+                out.push('|');
+            } else {
+                out.push_str(&line[i..=end_idx]);
             }
+            i = end_idx + 1;
+            continue;
         }
-        if matches!(ch, '[' | '(' | '{') {
-            if let Some((end_idx, inner, open_len)) = find_mermaid_bracket(line, i, ch) {
-                if let Some(translated) =
-                    translate_mermaid_bracket_text(&inner, cache, translator, options).await?
-                {
-                    out.push_str(&line[i..i + open_len]);
-                    out.push_str(&translated);
-                    out.push_str(&line[end_idx - open_len..end_idx]);
-                } else {
-                    out.push_str(&line[i..end_idx]);
-                }
-                i = end_idx;
-                continue;
+        if matches!(ch, '[' | '(' | '{')
+            && let Some((end_idx, inner, open_len)) = find_mermaid_bracket(line, i, ch)
+        {
+            if let Some(translated) =
+                translate_mermaid_bracket_text(&inner, cache, translator, options).await?
+            {
+                out.push_str(&line[i..i + open_len]);
+                out.push_str(&translated);
+                out.push_str(&line[end_idx - open_len..end_idx]);
+            } else {
+                out.push_str(&line[i..end_idx]);
             }
+            i = end_idx;
+            continue;
         }
         out.push(ch);
         i += ch.len_utf8();

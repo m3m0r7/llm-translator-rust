@@ -1,5 +1,5 @@
 use llm_translator_rust::settings;
-use llm_translator_rust::translations::{render_system_prompt, TranslateOptions, TOOL_NAME};
+use llm_translator_rust::translations::{TOOL_NAME, TranslateOptions, render_system_prompt};
 
 #[test]
 fn system_prompt_snapshot() {

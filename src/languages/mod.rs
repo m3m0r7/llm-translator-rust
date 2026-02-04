@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
@@ -76,20 +76,20 @@ fn load_language_pack(code: &str) -> Result<LanguagePack> {
     let mut parts_of_speech = HashMap::new();
     let mut report_labels = HashMap::new();
     if let Some(translate) = parsed.translate {
-        if let Some(map) = translate.iso_country_lang {
-            if let Some(entries) = map.get(&code.to_lowercase()) {
-                iso_country_lang.extend(entries.iter().map(|(k, v)| (k.to_lowercase(), v.clone())));
-            }
+        if let Some(map) = translate.iso_country_lang
+            && let Some(entries) = map.get(&code.to_lowercase())
+        {
+            iso_country_lang.extend(entries.iter().map(|(k, v)| (k.to_lowercase(), v.clone())));
         }
-        if let Some(map) = translate.parts_of_speech {
-            if let Some(entries) = map.get(&code.to_lowercase()) {
-                parts_of_speech.extend(entries.iter().map(|(k, v)| (k.to_string(), v.clone())));
-            }
+        if let Some(map) = translate.parts_of_speech
+            && let Some(entries) = map.get(&code.to_lowercase())
+        {
+            parts_of_speech.extend(entries.iter().map(|(k, v)| (k.to_string(), v.clone())));
         }
-        if let Some(map) = translate.report_labels {
-            if let Some(entries) = map.get(&code.to_lowercase()) {
-                report_labels.extend(entries.iter().map(|(k, v)| (k.to_string(), v.clone())));
-            }
+        if let Some(map) = translate.report_labels
+            && let Some(entries) = map.get(&code.to_lowercase())
+        {
+            report_labels.extend(entries.iter().map(|(k, v)| (k.to_string(), v.clone())));
         }
     }
 

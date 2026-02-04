@@ -60,11 +60,13 @@ Il binario sarà disponibile in:
 ./target/release/llm-translator-rust
 ```
 Note:
-- macOS/Linux predefinito: `/usr/local/bin` (usa `sudo make install` se necessario)
+- macOS/Linux default: `$XDG_RUNTIME_DIR` if set, otherwise `/usr/local/bin` (use `sudo make install` if needed)
 - Windows (MSYS/Git Bash): `%USERPROFILE%/.cargo/bin`
-- make writes build_env.toml and embeds it into the binary (portable builds don't need the file at runtime).
-- Override paths via env vars passed to make, e.g. BASE_DIRECTORY=~/.llm-translator-rust BIN_DIRECTORY=target/release INSTALL_DIRECTORY=/usr/local/bin SETTINGS_FILE=~/.llm-translator-rust/settings.toml BUILD_ENV_PATH=build_env.toml make
-- `make install` copies `settings.toml` to `baseDirectory` if it does not exist.
+- make writes build/build_env.toml and embeds it into the binary (portable builds don't need the file at runtime).
+- You can override paths via env vars passed to `make`, e.g.
+  `DATA_DIRECTORY=$XDG_DATA_HOME/llm-translator-rust CONFIG_DIRECTORY=$XDG_CONFIG_HOME/llm-translator-rust RUNTIME_DIRECTORY=$XDG_RUNTIME_DIR BIN_DIRECTORY=target/release BUILD_ENV_PATH=build/build_env.toml make`
+- `make install` copies `settings.toml` to the settings path (XDG config by default) if it does not exist.
+- `make install` copies headers from `ext/` into `$XDG_DATA_HOME/llm-translator-rust` if they do not exist.
 
 ## Quickstart
 
@@ -114,6 +116,7 @@ echo Awesome | llm-translator-rust -l ja --slang
 
 # Dictionary (part of speech/inflections)
 echo 猫 | llm-translator-rust --pos -l en
+echo play | llm-translator-rust --pos noun,verb -l en
 
 # File translation
 cat foobar.txt | llm-translator-rust -l en
@@ -164,7 +167,7 @@ Note:
 ## Overwrite mode (--overwrite)
 
 `--overwrite` scrive i risultati in loco per file o directory passati tramite `--data`.
-Prima di scrivere, ogni file viene salvato in `~/.llm-translator-rust/backup`.
+Prima di scrivere, ogni file viene salvato in `$XDG_DATA_HOME/llm-translator-rust/backup`.
 La conservazione è controllata da `settings.toml` `[system].backup_ttl_days` (predefinito: 30).
 
 ```bash
@@ -184,12 +187,13 @@ llm-translator-rust --data ./slide.pdf -l en --out ./translated.pdf
 
 ## Dictionary (--pos)
 
-`--pos` restituisce dettagli in stile dizionario per il termine in input.
+`--pos` restituisce dettagli in stile dizionario per il termine in input. Puoi filtrare per parte del discorso (separata da virgole); i nomi POS in inglese sono accettati e, se possibile, mappati sulla lingua di origine.
 
 Uso:
 
 ```
 echo 猫 | llm-translator-rust --pos -l en
+echo play | llm-translator-rust --pos noun,verb -l en
 ```
 
 Esempio di output (le etichette seguono la lingua sorgente):
@@ -305,11 +309,11 @@ Tradotto:
   - `~/.llm-translator/.cache/meta.json` (fallback: `./.llm-translator/.cache/meta.json`)
 - `--show-models-list` stampa la lista in cache come `provider:model` per riga.
 - `--show-whisper-models` stampa i nomi dei modelli whisper disponibili.
-- `--pos` restituisce dettagli in stile dizionario (traduzione + lettura, POS, alternative, flessioni, uso/esempi).
+- `--pos [noun,verb]` restituisce dettagli in stile dizionario (traduzione + lettura, POS, alternative, flessioni, uso/esempi).
 - `--correction` restituisce correzioni di proofreading e motivi nella lingua sorgente.
 - `--whisper-model` seleziona il nome o il percorso del modello whisper per la trascrizione audio.
 - Quando `--model` è omesso, viene preferito `lastUsingModel` in `meta.json` (fallback alla risoluzione predefinita se mancante o non valido).
-- Le cronologie sono salvate in `meta.json`. I file di destinazione sono scritti in `~/.llm-translator-rust/.cache/dest/<md5>`.
+- Le cronologie sono salvate in `meta.json`. I file di destinazione sono scritti in `$XDG_DATA_HOME/llm-translator-rust/.cache/dest/<md5>`.
 - Gli allegati immagine/PDF usano OCR (tesseract), normalizzano il testo OCR con LLM e ri-renderizzano un overlay numerato più una lista a piè di pagina.
 - I file Office (docx/xlsx/pptx) vengono riscritti traducendo i nodi di testo nell'XML.
 - Il mime di output coincide con il mime di input (ad es. png resta png, pdf resta pdf).
@@ -332,8 +336,8 @@ Provider model APIs:
 
 I file di configurazione sono caricati con la seguente precedenza (la più alta per prima):
 
-1. `~/.llm-translator-rust/settings.local.toml`
-2. `~/.llm-translator-rust/settings.toml`
+1. `$XDG_CONFIG_HOME/llm-translator-rust/settings.local.toml (fallback: ~/.config/llm-translator-rust/settings.local.toml)`
+2. `$XDG_CONFIG_HOME/llm-translator-rust/settings.toml` (fallback: `~/.config/llm-translator-rust/settings.toml`)
 3. `./settings.local.toml`
 4. `./settings.toml`
 
@@ -402,7 +406,7 @@ eng = "英語"
 |  | `--show-enabled-styles` | Mostra le chiavi di stile abilitate |  |
 |  | `--show-models-list` | Mostra l'elenco modelli in cache (provider:model) |  |
 |  | `--show-whisper-models` | Mostra i nomi dei modelli whisper disponibili |  |
-|  | `--pos` | Output dizionario (parti del discorso/flessioni) |  |
+|  | `--pos [noun,verb]` | Output dizionario (parti del discorso/flessioni) |  |
 |  | `--correction` | Correggi il testo in input e segnala le correzioni |  |
 |  | `--details` | Detailed translations across all formal styles |  |
 |  | `--report` | Generate a translation report (html/xml/json) |  |
@@ -413,7 +417,7 @@ eng = "英語"
 |  | `--force` | Forza la traduzione quando il rilevamento mime è incerto (tratta come testo) |  |
 |  | `--debug-ocr` | Output overlay/JSON di debug OCR per gli allegati |  |
 |  | `--whisper-model` | Nome o percorso del modello Whisper |  |
-|  | `--overwrite` | Sovrascrivi i file di input in loco (backup in `~/.llm-translator-rust/backup`) |  |
+|  | `--overwrite` | Sovrascrivi i file di input in loco (backup in `$XDG_DATA_HOME/llm-translator-rust/backup`) |  |
 |  | `--directory-translation-threads` | Concorrenza traduzione directory |  |
 |  | `--ignore-translation-file` | Pattern di esclusione per la traduzione directory (simile a gitignore) |  |
 | `-o` | `--out` | Percorso di output per file o directory tradotti |  |

@@ -1,6 +1,6 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::fs;
 use std::path::PathBuf;
 use tera::{Context as TeraContext, Tera};
@@ -378,10 +378,10 @@ pub(crate) fn display_language(
     pack: Option<&LanguagePack>,
 ) -> String {
     let code_norm = normalize_lang_code(code);
-    if let Some(pack) = pack {
-        if let Some(value) = pack.iso_country_lang.get(&code_norm) {
-            return value.clone();
-        }
+    if let Some(pack) = pack
+        && let Some(value) = pack.iso_country_lang.get(&code_norm)
+    {
+        return value.clone();
     }
     registry.iso_name(&code_norm).unwrap_or(code_norm)
 }

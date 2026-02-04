@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -19,6 +19,8 @@ struct MetaCache {
     models: Vec<String>,
     #[serde(default)]
     histories: Vec<HistoryEntry>,
+    #[serde(default)]
+    trend: TrendMeta,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -56,6 +58,26 @@ pub struct HistoryEntry {
     pub dest: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct TrendMeta {
+    #[serde(default)]
+    pub categories: Vec<TrendCount>,
+    #[serde(default, rename = "freqKeywords")]
+    pub freq_keywords: Vec<TrendKeyword>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct TrendCount {
+    pub name: String,
+    pub count: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct TrendKeyword {
+    pub keyword: String,
+    pub count: usize,
+}
+
 pub async fn get_models(provider: ProviderKind, key: &str) -> Result<Vec<String>> {
     let mut meta = read_meta()?;
     let prefix = provider_prefix(provider);
@@ -72,10 +94,10 @@ pub async fn get_models(provider: ProviderKind, key: &str) -> Result<Vec<String>
 }
 
 fn base_cache_dir() -> PathBuf {
-    if let Ok(home) = std::env::var("HOME") {
-        if !home.trim().is_empty() {
-            return Path::new(&home).join(".llm-translator/.cache");
-        }
+    if let Ok(home) = std::env::var("HOME")
+        && !home.trim().is_empty()
+    {
+        return Path::new(&home).join(".llm-translator/.cache");
     }
     Path::new(".llm-translator/.cache").to_path_buf()
 }
@@ -99,6 +121,19 @@ pub fn set_last_using_model(provider: ProviderKind, model: &str) -> Result<()> {
 pub fn get_histories() -> Result<Vec<HistoryEntry>> {
     let meta = read_meta()?;
     Ok(meta.histories)
+}
+
+pub fn get_trend() -> Result<TrendMeta> {
+    let meta = read_meta()?;
+    Ok(meta.trend)
+}
+
+pub fn update_trend(categories: &[String], keywords: &[String]) -> Result<()> {
+    let mut meta = read_meta()?;
+    update_category_counts(&mut meta.trend.categories, categories);
+    update_keyword_counts(&mut meta.trend.freq_keywords, keywords);
+    write_meta(&meta)?;
+    Ok(())
 }
 
 pub fn record_history(entry: HistoryEntry, limit: usize) -> Result<()> {
@@ -165,6 +200,60 @@ fn write_meta(meta: &MetaCache) -> Result<()> {
     let content = serde_json::to_string_pretty(meta)?;
     fs::write(path, content).with_context(|| "failed to write meta cache")?;
     Ok(())
+}
+
+fn update_category_counts(items: &mut Vec<TrendCount>, values: &[String]) {
+    let mut map: std::collections::HashMap<String, (String, usize)> =
+        std::collections::HashMap::new();
+    for item in items.iter() {
+        let key = item.name.to_lowercase();
+        map.insert(key, (item.name.clone(), item.count));
+    }
+    for value in values {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let key = trimmed.to_lowercase();
+        let entry = map.entry(key).or_insert_with(|| (trimmed.to_string(), 0));
+        entry.1 = entry.1.saturating_add(1);
+    }
+    let mut sorted = map
+        .into_iter()
+        .map(|(_, (name, count))| TrendCount { name, count })
+        .collect::<Vec<_>>();
+    sorted.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.name.cmp(&b.name)));
+    sorted.truncate(200);
+    *items = sorted;
+}
+
+fn update_keyword_counts(items: &mut Vec<TrendKeyword>, values: &[String]) {
+    let mut map: std::collections::HashMap<String, (String, usize)> =
+        std::collections::HashMap::new();
+    for item in items.iter() {
+        let key = item.keyword.to_lowercase();
+        map.insert(key, (item.keyword.clone(), item.count));
+    }
+    for value in values {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let key = trimmed.to_lowercase();
+        let entry = map.entry(key).or_insert_with(|| (trimmed.to_string(), 0));
+        entry.1 = entry.1.saturating_add(1);
+    }
+    let mut sorted = map
+        .into_iter()
+        .map(|(_, (keyword, count))| TrendKeyword { keyword, count })
+        .collect::<Vec<_>>();
+    sorted.sort_by(|a, b| {
+        b.count
+            .cmp(&a.count)
+            .then_with(|| a.keyword.cmp(&b.keyword))
+    });
+    sorted.truncate(200);
+    *items = sorted;
 }
 
 fn is_expired(meta: &MetaCache) -> bool {
@@ -368,20 +457,20 @@ fn format_error_parts(
     code: Option<String>,
 ) -> String {
     let mut parts = Vec::new();
-    if let Some(message) = message {
-        if !message.trim().is_empty() {
-            parts.push(message);
-        }
+    if let Some(message) = message
+        && !message.trim().is_empty()
+    {
+        parts.push(message);
     }
-    if let Some(kind) = kind {
-        if !kind.trim().is_empty() {
-            parts.push(format!("type: {}", kind));
-        }
+    if let Some(kind) = kind
+        && !kind.trim().is_empty()
+    {
+        parts.push(format!("type: {}", kind));
     }
-    if let Some(code) = code {
-        if !code.trim().is_empty() {
-            parts.push(format!("code: {}", code));
-        }
+    if let Some(code) = code
+        && !code.trim().is_empty()
+    {
+        parts.push(format!("code: {}", code));
     }
     if parts.is_empty() {
         "unknown error".to_string()

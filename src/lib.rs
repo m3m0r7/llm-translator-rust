@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use futures_util::stream::{self, StreamExt};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -59,11 +59,13 @@ pub struct Config {
     pub show_models_list: bool,
     pub show_whisper_models: bool,
     pub pos: bool,
+    pub pos_filter: Option<Vec<String>>,
     pub correction: bool,
     pub details: bool,
     pub report_format: Option<ReportFormat>,
     pub report_out: Option<String>,
     pub show_histories: bool,
+    pub show_trend: bool,
     pub with_using_tokens: bool,
     pub with_using_model: bool,
     pub with_commentout: bool,
@@ -108,10 +110,10 @@ async fn run_with_loaded_settings(
     mut settings: settings::Settings,
     input: Option<String>,
 ) -> Result<String> {
-    if let Some(model) = config.whisper_model.as_deref() {
-        if !model.trim().is_empty() {
-            settings.whisper_model = Some(model.to_string());
-        }
+    if let Some(model) = config.whisper_model.as_deref()
+        && !model.trim().is_empty()
+    {
+        settings.whisper_model = Some(model.to_string());
     }
     let registry = languages::LanguageRegistry::load()?;
     let packs = languages::load_language_packs(&settings.system_languages)?;
@@ -132,6 +134,9 @@ async fn run_with_loaded_settings(
     }
     if config.show_histories {
         return show_histories();
+    }
+    if config.show_trend {
+        return show_trend();
     }
 
     if config.report_out.is_some() && config.report_format.is_none() {
@@ -297,12 +302,12 @@ async fn run_with_loaded_settings(
         let report = report::build_report(&translator, &histories, Some(&report_lang_hint)).await?;
         let rendered = report::render_report(&report, report_format)?;
         let output_path = report::resolve_report_out(report_format, config.report_out.as_deref());
-        if let Some(parent) = output_path.parent() {
-            if !parent.as_os_str().is_empty() {
-                fs::create_dir_all(parent).with_context(|| {
-                    format!("failed to create report directory: {}", parent.display())
-                })?;
-            }
+        if let Some(parent) = output_path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            fs::create_dir_all(parent).with_context(|| {
+                format!("failed to create report directory: {}", parent.display())
+            })?;
         }
         fs::write(&output_path, rendered)
             .with_context(|| format!("failed to write report: {}", output_path.display()))?;
@@ -343,7 +348,9 @@ async fn run_with_loaded_settings(
             return Err(anyhow!("--pos only supports text input"));
         }
         info!("running dictionary mode");
-        let execution = dictionary::exec_pos(&translator, input, &options).await?;
+        let execution =
+            dictionary::exec_pos(&translator, input, &options, config.pos_filter.as_deref())
+                .await?;
         return Ok(format_execution_output(
             &execution,
             with_using_model,
@@ -379,12 +386,11 @@ async fn run_with_loaded_settings(
             }
             if let (Ok(src_abs), Ok(out_abs)) =
                 (std::fs::canonicalize(src_dir), std::fs::canonicalize(out))
+                && src_abs == out_abs
             {
-                if src_abs == out_abs {
-                    return Err(anyhow!(
-                        "--out must be different from the source directory (use --overwrite to write in place)"
-                    ));
-                }
+                return Err(anyhow!(
+                    "--out must be different from the source directory (use --overwrite to write in place)"
+                ));
             }
         }
         let ignore = build_translation_ignore(
@@ -413,36 +419,28 @@ async fn run_with_loaded_settings(
         return Ok(output);
     }
 
-    if needs_mime_detection {
-        if let Some(attachment) = data_attachment.as_mut() {
-            let detection = attachments::detect_mime_with_llm(attachment, &translator).await?;
-            let normalized = data::normalize_mime_hint(&detection.mime);
-            if detection.confident {
-                if let Some(mime) = normalized {
-                    attachment.mime = mime;
-                } else if config.force_translation {
-                    attachment.mime = data::TEXT_MIME.to_string();
-                } else {
-                    return Err(anyhow!(
-                        "unable to determine supported mime for '{}' (detected '{}'); use --force to treat as text",
-                        attachment
-                            .name
-                            .as_deref()
-                            .unwrap_or("attachment"),
-                        detection.mime
-                    ));
-                }
+    if needs_mime_detection && let Some(attachment) = data_attachment.as_mut() {
+        let detection = attachments::detect_mime_with_llm(attachment, &translator).await?;
+        let normalized = data::normalize_mime_hint(&detection.mime);
+        if detection.confident {
+            if let Some(mime) = normalized {
+                attachment.mime = mime;
             } else if config.force_translation {
                 attachment.mime = data::TEXT_MIME.to_string();
             } else {
                 return Err(anyhow!(
-                    "unable to determine mime for '{}' (low confidence); use --force to treat as text",
-                    attachment
-                        .name
-                        .as_deref()
-                        .unwrap_or("attachment")
+                    "unable to determine supported mime for '{}' (detected '{}'); use --force to treat as text",
+                    attachment.name.as_deref().unwrap_or("attachment"),
+                    detection.mime
                 ));
             }
+        } else if config.force_translation {
+            attachment.mime = data::TEXT_MIME.to_string();
+        } else {
+            return Err(anyhow!(
+                "unable to determine mime for '{}' (low confidence); use --force to treat as text",
+                attachment.name.as_deref().unwrap_or("attachment")
+            ));
         }
     }
 
@@ -556,8 +554,19 @@ async fn run_with_loaded_settings(
         )
         .await
         {
-            Ok(tags) if !tags.is_empty() => Some(tags),
-            Ok(_) => None,
+            Ok(result) => {
+                if (!result.categories.is_empty() || !result.keywords.is_empty())
+                    && let Err(err) =
+                        model_registry::update_trend(&result.categories, &result.keywords)
+                {
+                    warn!("failed to update trend meta: {}", err);
+                }
+                if result.tags.is_empty() {
+                    None
+                } else {
+                    Some(result.tags)
+                }
+            }
             Err(err) => {
                 warn!("failed to generate history tags: {}", err);
                 None
@@ -626,10 +635,10 @@ fn translated_output_path_in_dir(
         .strip_prefix(src_root)
         .with_context(|| "failed to resolve relative path")?;
     let mut dest = dest_root.join(rel);
-    if output_mime != input_mime {
-        if let Some(ext) = data::extension_from_mime(output_mime) {
-            dest.set_extension(ext);
-        }
+    if output_mime != input_mime
+        && let Some(ext) = data::extension_from_mime(output_mime)
+    {
+        dest.set_extension(ext);
     }
     Ok(dest)
 }
@@ -876,10 +885,10 @@ async fn process_dir_file<P: Provider + Clone>(
     translator: Translator<P>,
     shared: Arc<DirTranslateShared>,
 ) -> DirItemResult {
-    if let Some(ignore) = &shared.ignore {
-        if ignore.is_ignored(&path) {
-            return copy_or_skip(&path, &shared, None);
-        }
+    if let Some(ignore) = &shared.ignore
+        && ignore.is_ignored(&path)
+    {
+        return copy_or_skip(&path, &shared, None);
     }
 
     let attachment = match data::load_attachment(&path, shared.mime_hint.as_deref()) {
@@ -989,21 +998,21 @@ async fn process_dir_file<P: Provider + Clone>(
                 return DirItemResult {
                     status: DirItemStatus::Failed,
                     message: Some(format!("{}: {}", path.display(), err)),
-                }
+                };
             }
         }
     };
-    if let Some(parent) = output_path.parent() {
-        if let Err(err) = fs::create_dir_all(parent) {
-            return DirItemResult {
-                status: DirItemStatus::Failed,
-                message: Some(format!(
-                    "{}: failed to create output dir: {}",
-                    path.display(),
-                    err
-                )),
-            };
-        }
+    if let Some(parent) = output_path.parent()
+        && let Err(err) = fs::create_dir_all(parent)
+    {
+        return DirItemResult {
+            status: DirItemStatus::Failed,
+            message: Some(format!(
+                "{}: failed to create output dir: {}",
+                path.display(),
+                err
+            )),
+        };
     }
     if let Err(err) = fs::write(&output_path, &output.bytes) {
         return DirItemResult {
@@ -1060,17 +1069,17 @@ fn copy_or_skip(
     if let Some(dest_root) = shared.output_dir.as_ref() {
         match copy_output_path_in_dir(&shared.src_dir, dest_root, path) {
             Ok(dest) => {
-                if let Some(parent) = dest.parent() {
-                    if let Err(copy_err) = fs::create_dir_all(parent) {
-                        return DirItemResult {
-                            status: DirItemStatus::Failed,
-                            message: Some(format!(
-                                "{}: failed to create output dir: {}",
-                                path.display(),
-                                copy_err
-                            )),
-                        };
-                    }
+                if let Some(parent) = dest.parent()
+                    && let Err(copy_err) = fs::create_dir_all(parent)
+                {
+                    return DirItemResult {
+                        status: DirItemStatus::Failed,
+                        message: Some(format!(
+                            "{}: failed to create output dir: {}",
+                            path.display(),
+                            copy_err
+                        )),
+                    };
                 }
                 if let Err(copy_err) = fs::copy(path, &dest) {
                     return DirItemResult {
@@ -1132,6 +1141,37 @@ fn show_histories() -> Result<String> {
     Ok(lines.join("\n"))
 }
 
+fn show_trend() -> Result<String> {
+    let trend = model_registry::get_trend()?;
+    let mut lines = Vec::new();
+
+    if trend.categories.is_empty() && trend.freq_keywords.is_empty() {
+        return Ok("trend: 0".to_string());
+    }
+
+    lines.push("trend:".to_string());
+
+    let mut categories = trend.categories.clone();
+    categories.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.name.cmp(&b.name)));
+    lines.push(format!("categories: {}", categories.len()));
+    for (idx, item) in categories.iter().enumerate() {
+        lines.push(format!("[{}] {}: {}", idx + 1, item.name, item.count));
+    }
+
+    let mut keywords = trend.freq_keywords.clone();
+    keywords.sort_by(|a, b| {
+        b.count
+            .cmp(&a.count)
+            .then_with(|| a.keyword.cmp(&b.keyword))
+    });
+    lines.push(format!("freqKeywords: {}", keywords.len()));
+    for (idx, item) in keywords.iter().enumerate() {
+        lines.push(format!("[{}] {}: {}", idx + 1, item.keyword, item.count));
+    }
+
+    Ok(lines.join("\n"))
+}
+
 fn show_whisper_models() -> String {
     let models = [
         "tiny",
@@ -1170,7 +1210,7 @@ fn summarize_history_value(value: &str) -> String {
     }
 }
 
-struct HistoryRecordInput<'a> {
+pub(crate) struct HistoryRecordInput<'a> {
     provider: ProviderKind,
     model: &'a str,
     src_path: Option<&'a str>,
@@ -1184,7 +1224,7 @@ struct HistoryRecordInput<'a> {
     tags: Option<Vec<String>>,
 }
 
-fn record_history(input: HistoryRecordInput<'_>) -> Result<()> {
+pub(crate) fn record_history(input: HistoryRecordInput<'_>) -> Result<()> {
     let datetime = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -1227,7 +1267,7 @@ fn record_history(input: HistoryRecordInput<'_>) -> Result<()> {
     model_registry::record_history(entry, input.history_limit)
 }
 
-fn normalize_lang_for_history(value: &str) -> Option<String> {
+pub(crate) fn normalize_lang_for_history(value: &str) -> Option<String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
         None
@@ -1236,7 +1276,7 @@ fn normalize_lang_for_history(value: &str) -> Option<String> {
     }
 }
 
-fn normalize_formality_for_history(value: &str) -> Option<String> {
+pub(crate) fn normalize_formality_for_history(value: &str) -> Option<String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
         None
@@ -1275,14 +1315,14 @@ pub(crate) fn resolve_ocr_languages(
     langs.dedup();
     if !langs.is_empty() {
         if let Ok(available) = ocr::list_tesseract_languages() {
-            if let Some(req) = required.as_deref() {
-                if !available.iter().any(|value| value == req) {
-                    return Err(anyhow!(
-                        "tesseract language '{}' is not installed (available: {}). Install the language pack or change --source-lang.",
-                        req,
-                        available.join(", ")
-                    ));
-                }
+            if let Some(req) = required.as_deref()
+                && !available.iter().any(|value| value == req)
+            {
+                return Err(anyhow!(
+                    "tesseract language '{}' is not installed (available: {}). Install the language pack or change --source-lang.",
+                    req,
+                    available.join(", ")
+                ));
             }
             let mut chosen = Vec::new();
             let mut missing = Vec::new();
@@ -1568,11 +1608,11 @@ pub(crate) async fn resolve_model(
         ));
     }
 
-    if let Some(preferred) = preferred_default_model(provider) {
-        if is_model_compatible(provider, preferred) && models.iter().any(|model| model == preferred)
-        {
-            return Ok(preferred.to_string());
-        }
+    if let Some(preferred) = preferred_default_model(provider)
+        && is_model_compatible(provider, preferred)
+        && models.iter().any(|model| model == preferred)
+    {
+        return Ok(preferred.to_string());
     }
 
     let candidates = if compatible.is_empty() {

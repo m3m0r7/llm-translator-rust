@@ -1,6 +1,7 @@
 use std::io::{self, BufRead, IsTerminal, Read};
+use std::process::Command;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use clap::{Parser, ValueEnum};
 
 #[derive(Parser, Debug)]
@@ -59,8 +60,8 @@ struct Cli {
     show_whisper_models: bool,
 
     /// Show dictionary info (part of speech/inflections) for the input
-    #[arg(long = "pos")]
-    pos: bool,
+    #[arg(long = "pos", value_name = "POS", num_args = 0..=1, default_missing_value = "all")]
+    pos: Option<String>,
 
     /// Proofread input text and point out corrections
     #[arg(long = "correction", alias = "correcton")]
@@ -82,6 +83,10 @@ struct Cli {
     #[arg(long = "show-histories")]
     show_histories: bool,
 
+    /// Show translation trend (categories/keywords) and exit
+    #[arg(long = "show-trend")]
+    show_trend: bool,
+
     /// Append token usage to output
     #[arg(long = "with-using-tokens")]
     with_using_tokens: bool,
@@ -102,7 +107,7 @@ struct Cli {
     #[arg(long = "debug-ocr")]
     debug_ocr: bool,
 
-    /// Overwrite input files in place (backups stored in baseDirectory/backup, default: ~/.llm-translator-rust/backup)
+    /// Overwrite input files in place (backups stored in dataDirectory/backup, default: $XDG_DATA_HOME/llm-translator-rust/backup)
     #[arg(long = "overwrite", requires = "data")]
     overwrite: bool,
 
@@ -138,6 +143,16 @@ struct Cli {
     #[arg(long = "server", value_name = "ADDR", num_args = 0..=1, default_missing_value = "__settings__")]
     server: Option<String>,
 
+    /// Start web client (requires --server). (default: settings or 0.0.0.0:11222)
+    #[arg(
+        long = "client",
+        value_name = "ADDR",
+        num_args = 0..=1,
+        default_missing_value = "__settings__",
+        requires = "server"
+    )]
+    client: Option<String>,
+
     /// Start MCP server over stdio
     #[arg(long = "mcp")]
     mcp: bool,
@@ -164,14 +179,19 @@ impl From<ReportFormatArg> for llm_translator_rust::ReportFormat {
 async fn main() -> Result<()> {
     #[cfg(target_os = "macos")]
     {
-        std::env::set_var("OS_ACTIVITY_MODE", "disable");
-        std::env::set_var("OS_ACTIVITY_DT_MODE", "0");
+        unsafe {
+            std::env::set_var("OS_ACTIVITY_MODE", "disable");
+            std::env::set_var("OS_ACTIVITY_DT_MODE", "0");
+        }
     }
 
     let cli = Cli::parse();
     llm_translator_rust::logging::init(cli.verbose)?;
     if cli.mcp {
         return run_mcp(cli).await;
+    }
+    if cli.client.is_some() {
+        return run_server_with_client(cli).await;
     }
     if cli.server.is_some() {
         return run_server(cli).await;
@@ -185,6 +205,8 @@ async fn main() -> Result<()> {
         || cli.show_models_list
         || cli.show_whisper_models
         || cli.show_histories
+        || cli.show_trend
+        || cli.pos.is_some()
         || cli.report.is_some());
     let stdin_bytes = if needs_input {
         if cli.data.is_some() && io::stdin().is_terminal() {
@@ -264,12 +286,17 @@ async fn main() -> Result<()> {
             show_enabled_styles: cli.show_enabled_styles,
             show_models_list: cli.show_models_list,
             show_whisper_models: cli.show_whisper_models,
-            pos: cli.pos,
+            pos: cli.pos.is_some(),
+            pos_filter: cli
+                .pos
+                .as_deref()
+                .and_then(llm_translator_rust::dictionary::parse_pos_filter),
             correction: cli.correction,
             details: cli.details,
             report_format: cli.report.map(Into::into),
             report_out: cli.report_out,
             show_histories: cli.show_histories,
+            show_trend: cli.show_trend,
             with_using_tokens: cli.with_using_tokens,
             with_using_model: cli.with_using_model,
             with_commentout: cli.with_commentout,
@@ -314,12 +341,17 @@ impl InteractiveState {
                 show_enabled_styles: false,
                 show_models_list: false,
                 show_whisper_models: false,
-                pos: cli.pos,
+                pos: cli.pos.is_some(),
+                pos_filter: cli
+                    .pos
+                    .as_deref()
+                    .and_then(llm_translator_rust::dictionary::parse_pos_filter),
                 correction: cli.correction,
                 details: cli.details,
                 report_format: None,
                 report_out: None,
                 show_histories: false,
+                show_trend: false,
                 with_using_tokens: cli.with_using_tokens,
                 with_using_model: cli.with_using_model,
                 with_commentout: cli.with_commentout,
@@ -339,18 +371,91 @@ impl InteractiveState {
         config.show_models_list = false;
         config.show_whisper_models = false;
         config.show_histories = false;
+        config.show_trend = false;
         config
     }
+}
+
+fn resolve_server_addr(cli: &Cli, settings: &llm_translator_rust::settings::Settings) -> String {
+    match cli.server.as_deref() {
+        Some(value) if value != SERVER_DEFAULT_SENTINEL => value.to_string(),
+        _ => format!("{}:{}", settings.server_host, settings.server_port),
+    }
+}
+
+fn resolve_client_addr(cli: &Cli, settings: &llm_translator_rust::settings::Settings) -> String {
+    match cli.client.as_deref() {
+        Some(value) if value != SERVER_DEFAULT_SENTINEL => value.to_string(),
+        _ => format!("{}:{}", settings.client_host, settings.client_port),
+    }
+}
+
+fn normalize_browser_addr(addr: &str) -> String {
+    if let Some((host, port)) = addr.rsplit_once(':') {
+        let normalized = match host {
+            "0.0.0.0" => "127.0.0.1",
+            "::" => "[::1]",
+            "[::]" => "[::1]",
+            _ => host,
+        };
+        return format!("{}:{}", normalized, port);
+    }
+    if addr == "0.0.0.0" {
+        "127.0.0.1".to_string()
+    } else {
+        addr.to_string()
+    }
+}
+
+fn open_browser(url: &str) -> Result<()> {
+    let mut cmd = if cfg!(target_os = "macos") {
+        let mut cmd = Command::new("open");
+        cmd.arg(url);
+        cmd
+    } else if cfg!(target_os = "windows") {
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/C", "start", "", url]);
+        cmd
+    } else {
+        let mut cmd = Command::new("xdg-open");
+        cmd.arg(url);
+        cmd
+    };
+    cmd.spawn()?;
+    Ok(())
 }
 
 async fn run_server(cli: Cli) -> Result<()> {
     let settings_path = cli.read_settings.as_deref().map(std::path::Path::new);
     let settings = llm_translator_rust::settings::load_settings(settings_path)?;
-    let addr = match cli.server.as_deref() {
-        Some(value) if value != SERVER_DEFAULT_SENTINEL => value.to_string(),
-        _ => format!("{}:{}", settings.server_host, settings.server_port),
-    };
+    let addr = resolve_server_addr(&cli, &settings);
     llm_translator_rust::server::run_server(settings, addr).await?;
+    Ok(())
+}
+
+async fn run_server_with_client(cli: Cli) -> Result<()> {
+    use std::time::Duration;
+
+    let settings_path = cli.read_settings.as_deref().map(std::path::Path::new);
+    let settings = llm_translator_rust::settings::load_settings(settings_path)?;
+    let server_addr = resolve_server_addr(&cli, &settings);
+    let client_addr = resolve_client_addr(&cli, &settings);
+
+    let api_base = format!("http://{}", normalize_browser_addr(&server_addr));
+    let client_url = format!("http://{}", normalize_browser_addr(&client_addr));
+
+    let open_url = client_url.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        if let Err(err) = open_browser(&open_url) {
+            eprintln!("warning: failed to open browser: {}", err);
+        }
+    });
+
+    tokio::try_join!(
+        llm_translator_rust::server::run_server(settings, server_addr),
+        llm_translator_rust::server::run_client(client_addr, api_base)
+    )?;
     Ok(())
 }
 
@@ -467,6 +572,13 @@ async fn handle_interactive_command(input: &str, state: &mut InteractiveState) -
         println!("{}", output);
         return Ok(false);
     }
+    if trimmed == "/show-trend" {
+        let mut config = state.config_for_run();
+        config.show_trend = true;
+        let output = llm_translator_rust::run(config, None).await?;
+        println!("{}", output);
+        return Ok(false);
+    }
     if trimmed == "/show-enabled-languages" {
         let mut config = state.config_for_run();
         config.show_enabled_languages = true;
@@ -549,8 +661,27 @@ async fn handle_interactive_command(input: &str, state: &mut InteractiveState) -
         return Ok(false);
     }
     if let Some(arg) = trimmed.strip_prefix("/pos") {
-        state.config.pos = parse_toggle(arg, state.config.pos)?;
-        println!("pos: {}", state.config.pos);
+        let value = arg.trim();
+        if value.is_empty() {
+            state.config.pos = !state.config.pos;
+            state.config.pos_filter = None;
+        } else if is_toggle_value(value) {
+            state.config.pos = parse_toggle(value, state.config.pos)?;
+            if !state.config.pos {
+                state.config.pos_filter = None;
+            }
+        } else {
+            state.config.pos = true;
+            state.config.pos_filter = llm_translator_rust::dictionary::parse_pos_filter(value);
+        }
+        if state.config.pos {
+            match state.config.pos_filter.as_ref().map(|list| list.join(", ")) {
+                Some(list) if !list.is_empty() => println!("pos: on ({})", list),
+                _ => println!("pos: on (all)"),
+            }
+        } else {
+            println!("pos: off");
+        }
         return Ok(false);
     }
     if let Some(arg) = trimmed.strip_prefix("/correction") {
@@ -637,6 +768,13 @@ fn parse_toggle(arg: &str, current: bool) -> Result<bool> {
     }
 }
 
+fn is_toggle_value(value: &str) -> bool {
+    matches!(
+        value.to_lowercase().as_str(),
+        "on" | "true" | "1" | "off" | "false" | "0"
+    )
+}
+
 fn print_interactive_help() {
     println!("Commands:");
     println!("  /quit, /exit                 Exit interactive mode");
@@ -644,6 +782,7 @@ fn print_interactive_help() {
     println!("  /show-models-list            Show cached models");
     println!("  /show-whisper-models          Show whisper model names");
     println!("  /show-histories              Show translation histories");
+    println!("  /show-trend                  Show translation trend");
     println!("  /show-enabled-languages      Show enabled languages");
     println!("  /show-enabled-styles         Show enabled styles");
     println!("  /run                         Run translation with empty input");
@@ -653,7 +792,7 @@ fn print_interactive_help() {
     println!("  /source-lang <code>          Set source language");
     println!("  /formal <key>                Set formality key");
     println!("  /slang [on|off]              Toggle slang");
-    println!("  /pos [on|off]                Toggle dictionary mode");
+    println!("  /pos [on|off|noun,verb]      Toggle dictionary mode or filter POS");
     println!("  /correction [on|off]         Toggle correction mode");
     println!("  /with-using-model [on|off]   Toggle model suffix output");
     println!("  /with-using-tokens [on|off]  Toggle token usage output");
@@ -683,12 +822,13 @@ mod tests {
         assert!(!cli.show_enabled_styles);
         assert!(!cli.show_models_list);
         assert!(!cli.show_whisper_models);
-        assert!(!cli.pos);
+        assert!(cli.pos.is_none());
         assert!(!cli.correction);
         assert!(!cli.details);
         assert!(cli.report.is_none());
         assert!(cli.report_out.is_none());
         assert!(!cli.show_histories);
+        assert!(!cli.show_trend);
         assert!(!cli.with_using_tokens);
         assert!(!cli.with_using_model);
         assert!(cli.read_settings.is_none());
@@ -703,6 +843,7 @@ mod tests {
         assert!(!cli.interactive);
         assert!(cli.whisper_model.is_none());
         assert!(cli.server.is_none());
+        assert!(cli.client.is_none());
         assert!(!cli.mcp);
     }
 
@@ -737,6 +878,7 @@ mod tests {
             "--report-out",
             "report.json",
             "--show-histories",
+            "--show-trend",
             "--with-using-tokens",
             "--with-using-model",
             "-r",
@@ -760,6 +902,8 @@ mod tests {
             "base",
             "--server",
             "127.0.0.1:1234",
+            "--client",
+            "127.0.0.1:4321",
         ]);
         assert_eq!(cli.lang, "ja");
         assert_eq!(cli.model.as_deref(), Some("openai:gpt-4o"));
@@ -773,12 +917,13 @@ mod tests {
         assert!(cli.show_enabled_styles);
         assert!(cli.show_models_list);
         assert!(cli.show_whisper_models);
-        assert!(cli.pos);
+        assert_eq!(cli.pos.as_deref(), Some("all"));
         assert!(cli.correction);
         assert!(cli.details);
         assert!(matches!(cli.report, Some(ReportFormatArg::Json)));
         assert_eq!(cli.report_out.as_deref(), Some("report.json"));
         assert!(cli.show_histories);
+        assert!(cli.show_trend);
         assert!(cli.with_using_tokens);
         assert!(cli.with_using_model);
         assert_eq!(cli.read_settings.as_deref(), Some("custom.toml"));
@@ -796,6 +941,7 @@ mod tests {
         assert!(cli.mcp);
         assert_eq!(cli.whisper_model.as_deref(), Some("base"));
         assert_eq!(cli.server.as_deref(), Some("127.0.0.1:1234"));
+        assert_eq!(cli.client.as_deref(), Some("127.0.0.1:4321"));
     }
 
     #[test]

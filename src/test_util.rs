@@ -7,12 +7,18 @@ where
     let _guard = HOME_MUTEX.lock().expect("home lock");
     let dir = tempfile::tempdir().expect("tempdir");
     let old_home = std::env::var("HOME").ok();
-    std::env::set_var("HOME", dir.path());
+    unsafe {
+        std::env::set_var("HOME", dir.path());
+    }
     let result = func(dir.path());
     if let Some(old) = old_home {
-        std::env::set_var("HOME", old);
+        unsafe {
+            std::env::set_var("HOME", old);
+        }
     } else {
-        std::env::remove_var("HOME");
+        unsafe {
+            std::env::remove_var("HOME");
+        }
     }
     result
 }

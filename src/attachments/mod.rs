@@ -6,7 +6,7 @@ mod office;
 mod text;
 mod util;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use std::path::Path;
 use tracing::info;
 
@@ -17,11 +17,11 @@ use crate::{TranslateOptions, Translator};
 use cache::TranslationCache;
 use code::{translate_javascript, translate_mermaid, translate_tsx, translate_typescript};
 use media::{
-    build_ocr_debug_config, translate_audio, translate_image_with_cache, translate_pdf,
-    ImageTranslateRequest,
+    ImageTranslateRequest, build_ocr_debug_config, translate_audio, translate_image_with_cache,
+    translate_pdf,
 };
-pub use mime_detect::{detect_mime_with_llm, MimeDetection};
-use office::{translate_office_zip, OfficeKind};
+pub use mime_detect::{MimeDetection, detect_mime_with_llm};
+use office::{OfficeKind, translate_office_zip};
 use text::{
     translate_html, translate_json, translate_markdown, translate_po, translate_xml, translate_yaml,
 };

@@ -2,6 +2,8 @@ name: Release
 
 on:
   push:
+    branches:
+      - "main"
     tags:
       - "v*"
   workflow_dispatch:
@@ -65,19 +67,33 @@ jobs:
         run: |
           set -euo pipefail
 
+          tag=""
+          version=""
+
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             version="${{ inputs.version }}"
-            candidates=()
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            tag="${GITHUB_REF_NAME}"
+          else
+            message="${{ github.event.head_commit.message }}"
+            version=$(printf '%s' "$message" | grep -Eio '(release|version)[[:space:]:]+v?[0-9]+(\.[0-9]+)*' | head -n1 | grep -Eo 'v?[0-9]+(\.[0-9]+)*' || true)
+            if [ -z "$version" ]; then
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              echo "No release version found in commit message; skipping."
+              exit 0
+            fi
+          fi
 
+          git fetch --tags --force
+
+          if [ -z "$tag" ]; then
+            candidates=()
             if [[ "$version" == v* ]]; then
               candidates+=("$version" "${version#v}")
             else
               candidates+=("$version" "v$version")
             fi
 
-            git fetch --tags --force
-
-            tag=""
             for candidate in "${candidates[@]}"; do
               if git rev-parse -q --verify "refs/tags/$candidate" >/dev/null; then
                 tag="$candidate"
@@ -92,27 +108,27 @@ jobs:
               git tag -l >&2
               exit 1
             fi
-          else
-            tag="${GITHUB_REF_NAME}"
           fi
 
           git checkout "$tag"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
 
       - name: Install Rust
+        if: steps.resolve_tag.outputs.skip != 'true'
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
       - name: Install Linux build deps
-        if: matrix.os == 'linux' && matrix.use_cross != true
+        if: steps.resolve_tag.outputs.skip != 'true' && matrix.os == 'linux' && matrix.use_cross != true
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential clang llvm llvm-dev libclang-dev pkg-config
 
       - name: Build
-        if: matrix.use_cross != true
+        if: steps.resolve_tag.outputs.skip != 'true' && matrix.use_cross != true
         shell: bash
         run: |
           cargo build --release --manifest-path build/Cargo.toml
@@ -125,11 +141,11 @@ jobs:
             --target "${{ matrix.target }}"
 
       - name: Install cross
-        if: matrix.use_cross == true
+        if: steps.resolve_tag.outputs.skip != 'true' && matrix.use_cross == true
         run: cargo install cross --locked
 
       - name: Build (cross)
-        if: matrix.use_cross == true
+        if: steps.resolve_tag.outputs.skip != 'true' && matrix.use_cross == true
         env:
           CROSS_CONFIG: Cross.toml
         shell: bash
@@ -144,6 +160,7 @@ jobs:
             --target "${{ matrix.target }}"
 
       - name: Package
+        if: steps.resolve_tag.outputs.skip != 'true'
         shell: bash
         run: |
           mkdir -p dist
@@ -152,6 +169,7 @@ jobs:
           cp "$src" "$dst"
 
       - name: Release
+        if: steps.resolve_tag.outputs.skip != 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.resolve_tag.outputs.tag }}

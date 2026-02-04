@@ -1,11 +1,11 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::fs;
 use std::path::PathBuf;
 use tera::{Context as TeraContext, Tera};
 
-use crate::languages::LanguageRegistry;
+use crate::languages::{self, LanguageRegistry};
 use crate::providers::ToolSpec;
 use crate::settings::Settings;
 use crate::translations::TranslateOptions;
@@ -162,30 +162,58 @@ pub async fn exec_pos<P: crate::providers::Provider + Clone>(
     translator: &Translator<P>,
     input: &str,
     options: &TranslateOptions,
+    pos_filter: Option<&[String]>,
 ) -> Result<ExecutionOutput> {
     let tool = tool_spec(TOOL_NAME);
-    let system_prompt = render_system_prompt(options, translator.settings())?;
+    let prompt_filter = resolve_pos_filter(pos_filter, &options.source_lang);
+    let system_prompt =
+        render_system_prompt(options, translator.settings(), prompt_filter.as_deref())?;
     let response = translator
         .call_tool_with_data(tool, system_prompt, input.to_string(), None)
         .await?;
     let mut parsed = parse_tool_args(response.args, options, translator.registry())?;
+    let resolved_filter = resolve_pos_filter(pos_filter, &parsed.source_language);
+    let mut filtered = false;
+    if let Some(filter) = resolved_filter.as_ref()
+        && !filter.is_empty()
+    {
+        let original_pos = parsed.part_of_speech.clone();
+        let matches = filter_part_of_speech(&mut parsed.part_of_speech, filter);
+        if !matches {
+            return Ok(ExecutionOutput {
+                text: format!(
+                    "No matching part of speech found (allowed: {}, got: {})",
+                    pos_filter
+                        .map(|items| items.join(", "))
+                        .unwrap_or_else(|| "all".to_string()),
+                    display_value(&original_pos)
+                ),
+                model: response.model,
+                usage: response.usage,
+            });
+        }
+        filtered = true;
+    }
     if should_discard_labels(&parsed) {
         parsed.labels = Labels::default();
     }
-    if should_fix_attributes(&parsed) {
-        if let Some(fixed) = translate_attributes_to_source(translator, &parsed, options).await? {
-            parsed.attributes = fixed;
-        }
+    if should_fix_attributes(&parsed)
+        && let Some(fixed) = translate_attributes_to_source(translator, &parsed, options).await?
+    {
+        parsed.attributes = fixed;
     }
-    if should_fix_usage(&parsed) {
-        if let Some(fixed) = translate_usage_to_source(translator, &parsed, options).await? {
-            parsed.usage = fixed;
-        }
+    if should_fix_usage(&parsed)
+        && let Some(fixed) = translate_usage_to_source(translator, &parsed, options).await?
+    {
+        parsed.usage = fixed;
     }
     if should_fix_example_sources(&parsed) {
         translate_example_sources(translator, &mut parsed, options).await?;
     }
     fill_missing_readings(translator, &mut parsed).await?;
+    if filtered {
+        parsed.attributes.retain(|value| !value.trim().is_empty());
+    }
     let text = format_pos_output(&parsed);
     Ok(ExecutionOutput {
         text,
@@ -194,13 +222,20 @@ pub async fn exec_pos<P: crate::providers::Provider + Clone>(
     })
 }
 
-pub fn render_system_prompt(options: &TranslateOptions, settings: &Settings) -> Result<String> {
+pub fn render_system_prompt(
+    options: &TranslateOptions,
+    settings: &Settings,
+    pos_filter: Option<&[String]>,
+) -> Result<String> {
     let template = load_prompt_template("pos_prompt.tera")?;
     let mut context = TeraContext::new();
     context.insert("source_lang", options.source_lang.as_str());
     context.insert("target_lang", options.lang.as_str());
     context.insert("tool_name", TOOL_NAME);
     context.insert("style_guidance", &settings.formally);
+    if let Some(filter) = pos_filter {
+        context.insert("allowed_pos", filter);
+    }
 
     Tera::one_off(&template, &context, false).with_context(|| "failed to render pos prompt")
 }
@@ -415,6 +450,171 @@ pub fn format_pos_output(result: &DictionaryResult) -> String {
     }
 
     lines.join("\n")
+}
+
+pub fn parse_pos_filter(value: &str) -> Option<Vec<String>> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("all") {
+        return None;
+    }
+    let mut items = Vec::new();
+    for part in split_pos_tokens(trimmed) {
+        let normalized = normalize_pos_token(&part);
+        if !normalized.is_empty() && normalized != "all" {
+            items.push(normalized);
+        }
+    }
+    items.sort();
+    items.dedup();
+    if items.is_empty() { None } else { Some(items) }
+}
+
+fn resolve_pos_filter(pos_filter: Option<&[String]>, source_lang: &str) -> Option<Vec<String>> {
+    let filter = pos_filter?;
+    if filter.is_empty() {
+        return None;
+    }
+    let (localized_map, reverse_map) = load_pos_maps(source_lang);
+    let mut expanded = Vec::new();
+    for token in filter {
+        let normalized = normalize_pos_token(token);
+        if normalized.is_empty() {
+            continue;
+        }
+        expanded.push(normalized.clone());
+        if let Some(canonical) = canonical_pos_from_token(&normalized) {
+            expanded.push(canonical.to_string());
+            if let Some(localized) = localized_map.get(canonical) {
+                expanded.push(normalize_pos_token(localized));
+            }
+        } else if let Some(canonical) = reverse_map.get(&normalized) {
+            expanded.push(canonical.to_string());
+            if let Some(localized) = localized_map.get(canonical.as_str()) {
+                expanded.push(normalize_pos_token(localized));
+            }
+        }
+    }
+    expanded.sort();
+    expanded.dedup();
+    if expanded.is_empty() {
+        None
+    } else {
+        Some(expanded)
+    }
+}
+
+fn filter_part_of_speech(current: &mut String, allowed: &[String]) -> bool {
+    if allowed.is_empty() {
+        return true;
+    }
+    let tokens = split_pos_tokens(current);
+    if tokens.is_empty() {
+        return false;
+    }
+    let mut matched = Vec::new();
+    for token in tokens {
+        let normalized = normalize_pos_token(&token);
+        if allowed.iter().any(|item| item == &normalized) {
+            matched.push(token);
+        }
+    }
+    if matched.is_empty() {
+        let normalized = normalize_pos_token(current);
+        if allowed.iter().any(|item| item == &normalized) {
+            return true;
+        }
+        return false;
+    }
+    *current = matched.join(", ");
+    true
+}
+
+fn split_pos_tokens(value: &str) -> Vec<String> {
+    value
+        .split([',', '/', ';', '|', '・'])
+        .map(|item| item.trim())
+        .filter(|item| !item.is_empty())
+        .map(|item| item.to_string())
+        .collect()
+}
+
+fn normalize_pos_token(value: &str) -> String {
+    let trimmed = value.trim();
+    let trimmed = trimmed.split(['(', '（']).next().unwrap_or(trimmed).trim();
+    trimmed
+        .to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn load_pos_maps(
+    source_lang: &str,
+) -> (
+    std::collections::HashMap<String, String>,
+    std::collections::HashMap<String, String>,
+) {
+    let mut localized = std::collections::HashMap::new();
+    let mut reverse = std::collections::HashMap::new();
+    let code = source_lang.trim().to_lowercase();
+    if code.is_empty() || code == "auto" || code == "und" {
+        return (localized, reverse);
+    }
+    let packs = languages::load_language_packs(std::slice::from_ref(&code));
+    let Ok(packs) = packs else {
+        return (localized, reverse);
+    };
+    let Some(pack) = packs.packs.get(&code) else {
+        return (localized, reverse);
+    };
+    for (key, label) in &pack.parts_of_speech {
+        if let Some(canonical) = canonical_from_pack_key(key) {
+            localized.insert(canonical.to_string(), label.clone());
+            let normalized_label = normalize_pos_token(label);
+            if !normalized_label.is_empty() {
+                reverse.insert(normalized_label, canonical.to_string());
+            }
+        }
+    }
+    (localized, reverse)
+}
+
+fn canonical_from_pack_key(key: &str) -> Option<&'static str> {
+    match key.trim().to_lowercase().as_str() {
+        "noun" => Some("noun"),
+        "verb" => Some("verb"),
+        "adjective" => Some("adjective"),
+        "adverb" => Some("adverb"),
+        "pronoun" => Some("pronoun"),
+        "particle" => Some("particle"),
+        "auxiliary" => Some("auxiliary"),
+        "conjunction" => Some("conjunction"),
+        "interjection" => Some("interjection"),
+        "preposition" => Some("preposition"),
+        "determiner" => Some("determiner"),
+        "subject" => Some("subject"),
+        "object" => Some("object"),
+        _ => None,
+    }
+}
+
+fn canonical_pos_from_token(token: &str) -> Option<&'static str> {
+    match token {
+        "noun" | "n" => Some("noun"),
+        "verb" | "v" => Some("verb"),
+        "adjective" | "adj" => Some("adjective"),
+        "adverb" | "adv" => Some("adverb"),
+        "pronoun" | "pron" => Some("pronoun"),
+        "preposition" | "prep" | "postposition" => Some("preposition"),
+        "conjunction" | "conj" => Some("conjunction"),
+        "interjection" | "interj" => Some("interjection"),
+        "determiner" | "det" | "article" => Some("determiner"),
+        "particle" | "part" => Some("particle"),
+        "auxiliary" | "aux" | "auxiliary verb" => Some("auxiliary"),
+        "subject" | "subj" => Some("subject"),
+        "object" | "obj" => Some("object"),
+        _ => None,
+    }
 }
 
 fn label_or(value: Option<&str>, fallback: &str) -> String {

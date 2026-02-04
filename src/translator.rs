@@ -5,7 +5,7 @@ use crate::data::{DataAttachment, DataInfo};
 use crate::languages::LanguageRegistry;
 use crate::providers::{Provider, ProviderResponse, ProviderUsage, ToolSpec};
 use crate::settings::Settings;
-use crate::translations::{self, tool_spec, TranslateOptions, TOOL_NAME};
+use crate::translations::{self, TOOL_NAME, TranslateOptions, tool_spec};
 
 #[derive(Debug, Clone)]
 pub struct Translator<P: Provider + Clone> {

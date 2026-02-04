@@ -1,16 +1,16 @@
 use crate::data;
 use crate::providers::Provider;
 use crate::{TranslateOptions, Translator};
-use anyhow::{anyhow, Context, Result};
-use futures_util::future::BoxFuture;
+use anyhow::{Context, Result, anyhow};
 use futures_util::FutureExt;
+use futures_util::future::BoxFuture;
 use quick_xml::events::{BytesCData, BytesText, Event};
 use quick_xml::{Reader, Writer};
 use std::io::Cursor;
 
+use super::AttachmentTranslation;
 use super::cache::TranslationCache;
 use super::util::{is_numeric_like, looks_like_code, should_translate_text, split_text_bounds};
-use super::AttachmentTranslation;
 pub(crate) async fn translate_html<P: Provider + Clone>(
     bytes: &[u8],
     with_commentout: bool,
@@ -75,16 +75,16 @@ pub(crate) async fn translate_xml<P: Provider + Clone>(
             }
             Ok(Event::CData(cdata)) => {
                 let mut wrote = false;
-                if let Ok(text) = std::str::from_utf8(cdata.as_ref()) {
-                    if should_translate_text(text) {
-                        let translated = cache
-                            .translate_preserve_whitespace(text, translator, options)
-                            .await?;
-                        writer
-                            .write_event(Event::CData(BytesCData::new(&translated)))
-                            .with_context(|| "failed to write xml cdata")?;
-                        wrote = true;
-                    }
+                if let Ok(text) = std::str::from_utf8(cdata.as_ref())
+                    && should_translate_text(text)
+                {
+                    let translated = cache
+                        .translate_preserve_whitespace(text, translator, options)
+                        .await?;
+                    writer
+                        .write_event(Event::CData(BytesCData::new(&translated)))
+                        .with_context(|| "failed to write xml cdata")?;
+                    wrote = true;
                 }
                 if !wrote {
                     writer
@@ -304,16 +304,14 @@ async fn translate_html_document<P: Provider + Clone>(
                 }
             }
         }
-        if with_commentout {
-            if let Some(comment) = node.as_comment() {
-                let original = comment.borrow().to_string();
-                if should_translate_text(&original) {
-                    let translated = cache
-                        .translate_preserve_whitespace(&original, translator, options)
-                        .await?;
-                    if translated != original {
-                        *comment.borrow_mut() = translated;
-                    }
+        if with_commentout && let Some(comment) = node.as_comment() {
+            let original = comment.borrow().to_string();
+            if should_translate_text(&original) {
+                let translated = cache
+                    .translate_preserve_whitespace(&original, translator, options)
+                    .await?;
+                if translated != original {
+                    *comment.borrow_mut() = translated;
                 }
             }
         }
@@ -327,10 +325,10 @@ async fn translate_html_document<P: Provider + Clone>(
             {
                 let attrs = element.attributes.borrow();
                 for attr in html_translatable_attrs() {
-                    if let Some(value) = attrs.get(*attr) {
-                        if should_translate_text(value) {
-                            updates.push((attr.to_string(), value.to_string()));
-                        }
+                    if let Some(value) = attrs.get(*attr)
+                        && should_translate_text(value)
+                    {
+                        updates.push((attr.to_string(), value.to_string()));
                     }
                 }
             }

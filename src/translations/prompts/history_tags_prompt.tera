@@ -4,12 +4,13 @@ Input JSON:
 { "text": "...", "source_language": "...", "target_language": "..." }
 
 Requirements:
-- Return 3 to 6 concise tags (max 2-4 words each).
-- Tags should be in the source language when possible.
-- If source_language is "auto", detect the input language and use that for tags.
+- Tags: 3 to 6 concise tags (max 2-4 words each).
+- Categories: 2 to 4 high-level categories (e.g., IT, Business, Animal, Travel).
+- Keywords: 5 to 12 frequent keywords extracted from the input.
+- Use the source language when possible. If source_language is "auto", detect it and use that language.
 - If the language cannot be determined, use English.
 - Prefer noun phrases or short topics.
 - Do not include duplicates or near-duplicates.
 
 Return JSON using tool {{ tool_name }} with this schema:
-{ "tags": ["tag1", "tag2"] }
+{ "tags": ["tag1", "tag2"], "categories": ["IT", "Business"], "keywords": ["cat", "error"] }

@@ -1,10 +1,10 @@
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
+use crate::Translator;
 use crate::data;
 use crate::providers::Provider;
 use crate::translations::{self, MIME_TOOL_NAME};
-use crate::Translator;
 
 #[derive(Debug, Clone)]
 pub struct MimeDetection {

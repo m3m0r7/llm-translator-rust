@@ -1,8 +1,8 @@
 # Settings precedence (last wins):
 # - ./settings.toml
 # - ./settings.local.toml
-# - ~/.llm-translator-rust/settings.toml
-# - ~/.llm-translator-rust/settings.local.toml
+# - $XDG_CONFIG_HOME/llm-translator-rust/settings.toml (fallback: ~/.config/llm-translator-rust/settings.toml)
+# - $XDG_CONFIG_HOME/llm-translator-rust/settings.local.toml (fallback: ~/.config/llm-translator-rust/settings.local.toml)
 # - -r/--read-settings (if provided)
 #
 # [formally] maps style keys (passed via -f/--formal) to guidance text.
@@ -109,3 +109,8 @@ normalize = true
 # host = "0.0.0.0"
 # port = 11223
 # tmp_dir = "/tmp/llm-translator-rust"
+
+# [client] controls web client settings for --client.
+[client]
+# host = "0.0.0.0"
+# port = 11222

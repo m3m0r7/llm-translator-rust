@@ -1,11 +1,11 @@
 use anyhow::anyhow;
-use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::retry::{
-    is_rate_limited, retry_after, wait_with_backoff, RATE_LIMIT_BASE_DELAY, RATE_LIMIT_MAX_RETRIES,
+    RATE_LIMIT_BASE_DELAY, RATE_LIMIT_MAX_RETRIES, is_rate_limited, retry_after, wait_with_backoff,
 };
 use super::{
     Message, MessagePart, MessageRole, Provider, ProviderFuture, ProviderResponse, ProviderUsage,
@@ -185,23 +185,23 @@ fn extract_tool_response(
         .ok_or_else(|| anyhow!("no candidate returned from Gemini"))?;
 
     for part in &candidate.parts {
-        if let Some(function_call) = &part.function_call {
-            if function_call.name == tool_name {
-                let model = payload
-                    .model_version
-                    .filter(|value| !value.trim().is_empty())
-                    .or_else(|| Some(fallback_model.to_string()));
-                let usage = payload.usage_metadata.map(|usage| ProviderUsage {
-                    prompt_tokens: usage.prompt_token_count,
-                    completion_tokens: usage.candidates_token_count,
-                    total_tokens: usage.total_token_count,
-                });
-                return Ok(ProviderResponse {
-                    args: function_call.args.clone(),
-                    model,
-                    usage,
-                });
-            }
+        if let Some(function_call) = &part.function_call
+            && function_call.name == tool_name
+        {
+            let model = payload
+                .model_version
+                .filter(|value| !value.trim().is_empty())
+                .or_else(|| Some(fallback_model.to_string()));
+            let usage = payload.usage_metadata.map(|usage| ProviderUsage {
+                prompt_tokens: usage.prompt_token_count,
+                completion_tokens: usage.candidates_token_count,
+                total_tokens: usage.total_token_count,
+            });
+            return Ok(ProviderResponse {
+                args: function_call.args.clone(),
+                model,
+                usage,
+            });
         }
     }
 
@@ -236,20 +236,20 @@ fn format_error_parts(
     code: Option<String>,
 ) -> String {
     let mut parts = Vec::new();
-    if let Some(message) = message {
-        if !message.trim().is_empty() {
-            parts.push(message);
-        }
+    if let Some(message) = message
+        && !message.trim().is_empty()
+    {
+        parts.push(message);
     }
-    if let Some(kind) = kind {
-        if !kind.trim().is_empty() {
-            parts.push(format!("type: {}", kind));
-        }
+    if let Some(kind) = kind
+        && !kind.trim().is_empty()
+    {
+        parts.push(format!("type: {}", kind));
     }
-    if let Some(code) = code {
-        if !code.trim().is_empty() {
-            parts.push(format!("code: {}", code));
-        }
+    if let Some(code) = code
+        && !code.trim().is_empty()
+    {
+        parts.push(format!("code: {}", code));
     }
     if parts.is_empty() {
         "unknown error".to_string()

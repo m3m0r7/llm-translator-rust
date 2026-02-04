@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -13,8 +13,8 @@ use crate::attachments::util::{
 use crate::ocr;
 
 use super::ocr::{
-    contains_non_latin_script, is_latin_reading, normalize_ocr_lines_with_llm,
-    romanize_lines_with_llm, OcrDebugConfig, OcrNormalizeRequest,
+    OcrDebugConfig, OcrNormalizeRequest, contains_non_latin_script, is_latin_reading,
+    normalize_ocr_lines_with_llm, romanize_lines_with_llm,
 };
 
 pub(crate) struct ImageTranslateRequest<'a> {

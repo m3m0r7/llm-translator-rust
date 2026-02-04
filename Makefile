@@ -5,14 +5,17 @@ BUILD_DIR := target/release
 BUILD_TOOL_NAME := llm-translator-build
 BUILD_TOOL_MANIFEST := build/Cargo.toml
 BUILD_TOOL_BIN := build/target/release/$(BUILD_TOOL_NAME)
-BUILD_ENV_PATH ?= build_env.toml
+BUILD_ENV_PATH ?= build/build_env.toml
 BUILD_TOOL_BUILDER ?= cargo
 BUILD_TARGET ?=
 BUILD_BIN_DIR ?= $(BUILD_DIR)
-BASE_DIRECTORY ?=
+DATA_DIRECTORY ?=
 BIN_DIRECTORY ?=
-INSTALL_DIRECTORY ?=
+RUNTIME_DIRECTORY ?=
+CONFIG_DIRECTORY ?=
 SETTINGS_FILE ?=
+BASE_DIRECTORY ?=
+INSTALL_DIRECTORY ?=
 ifeq ($(OS),Windows_NT)
 	BIN_EXT := .exe
 	BUILD_TOOL_BIN := $(BUILD_TOOL_BIN).exe
@@ -28,14 +31,21 @@ ifneq ($(strip $(BUILD_TARGET)),)
 endif
 
 BUILD_ENV_ARGS :=
-ifneq ($(strip $(BASE_DIRECTORY)),)
-	BUILD_ENV_ARGS += --base-directory "$(BASE_DIRECTORY)"
+ifneq ($(strip $(DATA_DIRECTORY)),)
+	BUILD_ENV_ARGS += --data-directory "$(DATA_DIRECTORY)"
+else ifneq ($(strip $(BASE_DIRECTORY)),)
+	BUILD_ENV_ARGS += --data-directory "$(BASE_DIRECTORY)"
 endif
 ifneq ($(strip $(BIN_DIRECTORY)),)
 	BUILD_ENV_ARGS += --bin-directory "$(BIN_DIRECTORY)"
 endif
-ifneq ($(strip $(INSTALL_DIRECTORY)),)
-	BUILD_ENV_ARGS += --install-directory "$(INSTALL_DIRECTORY)"
+ifneq ($(strip $(RUNTIME_DIRECTORY)),)
+	BUILD_ENV_ARGS += --runtime-directory "$(RUNTIME_DIRECTORY)"
+else ifneq ($(strip $(INSTALL_DIRECTORY)),)
+	BUILD_ENV_ARGS += --runtime-directory "$(INSTALL_DIRECTORY)"
+endif
+ifneq ($(strip $(CONFIG_DIRECTORY)),)
+	BUILD_ENV_ARGS += --config-directory "$(CONFIG_DIRECTORY)"
 endif
 ifneq ($(strip $(SETTINGS_FILE)),)
 	BUILD_ENV_ARGS += --settings-file "$(SETTINGS_FILE)"

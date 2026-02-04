@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use quick_xml::events::{BytesText, Event};
 use quick_xml::{Reader, Writer};
 use std::io::{Cursor, Read, Write};
@@ -9,8 +9,8 @@ use crate::data;
 use crate::providers::Provider;
 use crate::{TranslateOptions, Translator};
 
-use super::cache::TranslationCache;
 use super::AttachmentTranslation;
+use super::cache::TranslationCache;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum OfficeKind {

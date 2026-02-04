@@ -1,11 +1,11 @@
 use anyhow::anyhow;
-use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use serde::Deserialize;
 use serde_json::json;
 
 use super::retry::{
-    is_rate_limited, retry_after, wait_with_backoff, RATE_LIMIT_BASE_DELAY, RATE_LIMIT_MAX_RETRIES,
+    RATE_LIMIT_BASE_DELAY, RATE_LIMIT_MAX_RETRIES, is_rate_limited, retry_after, wait_with_backoff,
 };
 use super::{
     Message, MessagePart, MessageRole, Provider, ProviderFuture, ProviderResponse, ProviderUsage,
@@ -248,20 +248,20 @@ fn format_error_parts(
     code: Option<String>,
 ) -> String {
     let mut parts = Vec::new();
-    if let Some(message) = message {
-        if !message.trim().is_empty() {
-            parts.push(message);
-        }
+    if let Some(message) = message
+        && !message.trim().is_empty()
+    {
+        parts.push(message);
     }
-    if let Some(kind) = kind {
-        if !kind.trim().is_empty() {
-            parts.push(format!("type: {}", kind));
-        }
+    if let Some(kind) = kind
+        && !kind.trim().is_empty()
+    {
+        parts.push(format!("type: {}", kind));
     }
-    if let Some(code) = code {
-        if !code.trim().is_empty() {
-            parts.push(format!("code: {}", code));
-        }
+    if let Some(code) = code
+        && !code.trim().is_empty()
+    {
+        parts.push(format!("code: {}", code));
     }
     if parts.is_empty() {
         "unknown error".to_string()

@@ -3,8 +3,8 @@ mod font;
 mod render;
 
 pub use engine::{extract_lines, list_tesseract_languages};
-pub use font::{load_font_metrics, resolve_overlay_font, FontMetrics, ResolvedOverlayFont};
-pub use render::{render_bbox_svg, render_svg, render_svg_bytes, RenderOutcome};
+pub use font::{FontMetrics, ResolvedOverlayFont, load_font_metrics, resolve_overlay_font};
+pub use render::{RenderOutcome, render_bbox_svg, render_svg, render_svg_bytes};
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct BBoxPx {

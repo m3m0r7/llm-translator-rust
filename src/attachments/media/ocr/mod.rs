@@ -14,7 +14,7 @@ use crate::attachments::util::{
 };
 
 pub(crate) mod debug;
-pub(crate) use debug::{build_ocr_debug_config, OcrDebugConfig};
+pub(crate) use debug::{OcrDebugConfig, build_ocr_debug_config};
 
 const OCR_NORMALIZE_TOOL: &str = "normalize_ocr";
 const OCR_ROMANIZE_TOOL: &str = "romanize_ocr";

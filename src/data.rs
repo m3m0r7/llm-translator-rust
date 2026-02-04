@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use std::path::{Path, PathBuf};
 
 pub const DOCX_MIME: &str =
@@ -184,12 +184,12 @@ fn resolve_mime(input: &str, bytes: &[u8], path: Option<&Path>) -> Result<String
 
 fn detect_mime(bytes: &[u8], path: Option<&Path>, require_image: bool) -> Result<String> {
     if let Some(detected) = sniff_mime_bytes(bytes) {
-        if !require_image && detected == TEXT_MIME {
-            if let Some(ext) = extension_lower(path) {
-                if let Some(mime) = mime_from_extension(&ext) {
-                    return Ok(mime.to_string());
-                }
-            }
+        if !require_image
+            && detected == TEXT_MIME
+            && let Some(ext) = extension_lower(path)
+            && let Some(mime) = mime_from_extension(&ext)
+        {
+            return Ok(mime.to_string());
         }
         if require_image && !detected.starts_with("image/") {
             return Err(anyhow!(
@@ -200,16 +200,16 @@ fn detect_mime(bytes: &[u8], path: Option<&Path>, require_image: bool) -> Result
         return Ok(detected.to_string());
     }
 
-    if let Some(ext) = extension_lower(path) {
-        if let Some(mime) = mime_from_extension(&ext) {
-            if require_image && !mime.starts_with("image/") {
-                return Err(anyhow!(
-                    "data-mime image/* requires image data (detected '{}')",
-                    mime
-                ));
-            }
-            return Ok(mime.to_string());
+    if let Some(ext) = extension_lower(path)
+        && let Some(mime) = mime_from_extension(&ext)
+    {
+        if require_image && !mime.starts_with("image/") {
+            return Err(anyhow!(
+                "data-mime image/* requires image data (detected '{}')",
+                mime
+            ));
         }
+        return Ok(mime.to_string());
     }
 
     Err(anyhow!(

@@ -24,3 +24,8 @@ Rules:
 - Keep labels concise in the source language.
 - Keep examples short and natural.
 - Ensure each target example contains either the translation or one of the alternatives verbatim.
+{% if allowed_pos %}
+- Allowed part_of_speech values: {{ allowed_pos | join(", ") }}.
+- If multiple parts of speech apply, choose one from the allowed list.
+- If none apply, set part_of_speech to "unknown".
+{% endif %}

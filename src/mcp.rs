@@ -1,10 +1,10 @@
 use anyhow::Result;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-use crate::settings;
 use crate::Config;
+use crate::settings;
 
 #[derive(Debug, Clone)]
 pub struct McpDefaults {
@@ -58,7 +58,7 @@ async fn handle_line(
                 None,
                 -32700,
                 &format!("parse error: {}", err),
-            )))
+            )));
         }
     };
     let id = value.get("id").cloned();
@@ -280,11 +280,13 @@ impl McpDefaults {
             show_models_list: false,
             show_whisper_models: false,
             pos: false,
+            pos_filter: None,
             correction: false,
             details: false,
             report_format: None,
             report_out: None,
             show_histories: false,
+            show_trend: false,
             with_using_tokens: false,
             with_using_model: false,
             with_commentout: false,

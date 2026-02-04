@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
@@ -28,6 +28,8 @@ pub struct Settings {
     pub server_host: String,
     pub server_port: u16,
     pub server_tmp_dir: Option<String>,
+    pub client_host: String,
+    pub client_port: u16,
 }
 
 impl Default for Settings {
@@ -51,6 +53,8 @@ impl Default for Settings {
             server_host: "0.0.0.0".to_string(),
             server_port: 11223,
             server_tmp_dir: None,
+            client_host: "0.0.0.0".to_string(),
+            client_port: 11222,
         }
     }
 }
@@ -62,6 +66,7 @@ struct SettingsFile {
     ocr: Option<OcrSettings>,
     whisper: Option<WhisperSettings>,
     server: Option<ServerSettings>,
+    client: Option<ClientSettings>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -95,6 +100,12 @@ struct ServerSettings {
     host: Option<String>,
     port: Option<u16>,
     tmp_dir: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct ClientSettings {
+    host: Option<String>,
+    port: Option<u16>,
 }
 
 pub fn load_settings(extra_path: Option<&Path>) -> Result<Settings> {
@@ -142,87 +153,98 @@ impl Settings {
             if let Some(languages) = system.languages {
                 self.system_languages = languages;
             }
-            if let Some(limit) = system.histories {
-                if limit > 0 {
-                    self.history_limit = limit;
-                }
+            if let Some(limit) = system.histories
+                && limit > 0
+            {
+                self.history_limit = limit;
             }
             if let Some(suffix) = system.translated_suffix {
                 self.translated_suffix = suffix;
             }
-            if let Some(ttl) = system.backup_ttl_days {
-                if ttl > 0 {
-                    self.backup_ttl_days = ttl;
-                }
+            if let Some(ttl) = system.backup_ttl_days
+                && ttl > 0
+            {
+                self.backup_ttl_days = ttl;
             }
-            if let Some(threads) = system.directory_translation_threads {
-                if threads > 0 {
-                    self.directory_translation_threads = threads;
-                }
+            if let Some(threads) = system.directory_translation_threads
+                && threads > 0
+            {
+                self.directory_translation_threads = threads;
             }
-            if let Some(ignore_file) = system.translation_ignore_file {
-                if !ignore_file.trim().is_empty() {
-                    self.translation_ignore_file = ignore_file;
-                }
+            if let Some(ignore_file) = system.translation_ignore_file
+                && !ignore_file.trim().is_empty()
+            {
+                self.translation_ignore_file = ignore_file;
             }
         }
         if let Some(ocr) = incoming.ocr {
-            if let Some(color) = ocr.text_color {
-                if !color.trim().is_empty() {
-                    self.overlay_text_color = color;
-                }
+            if let Some(color) = ocr.text_color
+                && !color.trim().is_empty()
+            {
+                self.overlay_text_color = color;
             }
-            if let Some(color) = ocr.stroke_color {
-                if !color.trim().is_empty() {
-                    self.overlay_stroke_color = color;
-                }
+            if let Some(color) = ocr.stroke_color
+                && !color.trim().is_empty()
+            {
+                self.overlay_stroke_color = color;
             }
-            if let Some(color) = ocr.fill_color {
-                if !color.trim().is_empty() {
-                    self.overlay_fill_color = color;
-                }
+            if let Some(color) = ocr.fill_color
+                && !color.trim().is_empty()
+            {
+                self.overlay_fill_color = color;
             }
-            if let Some(size) = ocr.font_size {
-                if size > 0.0 {
-                    self.overlay_font_size = Some(size);
-                }
+            if let Some(size) = ocr.font_size
+                && size > 0.0
+            {
+                self.overlay_font_size = Some(size);
             }
-            if let Some(family) = ocr.font_family {
-                if !family.trim().is_empty() {
-                    self.overlay_font_family = Some(family);
-                }
+            if let Some(family) = ocr.font_family
+                && !family.trim().is_empty()
+            {
+                self.overlay_font_family = Some(family);
             }
-            if let Some(path) = ocr.font_path {
-                if !path.trim().is_empty() {
-                    self.overlay_font_path = Some(path);
-                }
+            if let Some(path) = ocr.font_path
+                && !path.trim().is_empty()
+            {
+                self.overlay_font_path = Some(path);
             }
             if let Some(normalize) = ocr.normalize {
                 self.ocr_normalize = normalize;
             }
         }
-        if let Some(whisper) = incoming.whisper {
-            if let Some(model) = whisper.model {
-                if !model.trim().is_empty() {
-                    self.whisper_model = Some(model);
-                }
-            }
+        if let Some(whisper) = incoming.whisper
+            && let Some(model) = whisper.model
+            && !model.trim().is_empty()
+        {
+            self.whisper_model = Some(model);
         }
         if let Some(server) = incoming.server {
-            if let Some(host) = server.host {
-                if !host.trim().is_empty() {
-                    self.server_host = host;
-                }
+            if let Some(host) = server.host
+                && !host.trim().is_empty()
+            {
+                self.server_host = host;
             }
-            if let Some(port) = server.port {
-                if port > 0 {
-                    self.server_port = port;
-                }
+            if let Some(port) = server.port
+                && port > 0
+            {
+                self.server_port = port;
             }
-            if let Some(tmp_dir) = server.tmp_dir {
-                if !tmp_dir.trim().is_empty() {
-                    self.server_tmp_dir = Some(tmp_dir);
-                }
+            if let Some(tmp_dir) = server.tmp_dir
+                && !tmp_dir.trim().is_empty()
+            {
+                self.server_tmp_dir = Some(tmp_dir);
+            }
+        }
+        if let Some(client) = incoming.client {
+            if let Some(host) = client.host
+                && !host.trim().is_empty()
+            {
+                self.client_host = host;
+            }
+            if let Some(port) = client.port
+                && port > 0
+            {
+                self.client_port = port;
             }
         }
     }

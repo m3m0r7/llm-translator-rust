@@ -6,6 +6,8 @@ pub(crate) struct ServerRequest {
     pub(crate) text: Option<String>,
     pub(crate) data: Option<String>,
     pub(crate) data_mime: Option<String>,
+    pub(crate) data_base64: Option<String>,
+    pub(crate) data_name: Option<String>,
     pub(crate) lang: Option<String>,
     pub(crate) model: Option<String>,
     pub(crate) key: Option<String>,
@@ -19,6 +21,7 @@ pub(crate) struct ServerRequest {
     pub(crate) ignore_translation_files: Option<Vec<String>>,
     pub(crate) whisper_model: Option<String>,
     pub(crate) correction: Option<bool>,
+    pub(crate) response_format: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

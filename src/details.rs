@@ -1,13 +1,13 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tera::{Context as TeraContext, Tera};
 
+use crate::Translator;
 use crate::languages::LanguageRegistry;
 use crate::providers::{Provider, ProviderUsage, ToolSpec};
 use crate::settings::Settings;
 use crate::translations::TranslateOptions;
-use crate::Translator;
 
 const TOOL_NAME: &str = "deliver_translation_details";
 
@@ -193,14 +193,13 @@ fn collect_styles(settings: &Settings, preferred: &str) -> Result<Vec<StyleEntry
     entries.sort_by(|a, b| a.key.cmp(&b.key));
 
     let preferred = preferred.trim();
-    if !preferred.is_empty() {
-        if let Some(idx) = entries
+    if !preferred.is_empty()
+        && let Some(idx) = entries
             .iter()
             .position(|entry| entry.key.eq_ignore_ascii_case(preferred))
-        {
-            let entry = entries.remove(idx);
-            entries.insert(0, entry);
-        }
+    {
+        let entry = entries.remove(idx);
+        entries.insert(0, entry);
     }
 
     Ok(entries)

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use time::{format_description, OffsetDateTime};
+use time::{OffsetDateTime, format_description};
 
 use crate::languages::{self, LanguagePack, LanguageRegistry};
 use crate::model_registry::{HistoryEntry, HistoryType};
@@ -211,10 +211,10 @@ struct ReportPacks {
 impl ReportPacks {
     fn display_pack(&self) -> Option<&LanguagePack> {
         let packs = self.packs.as_ref()?;
-        if let Some(code) = self.display_code.as_deref() {
-            if let Some(pack) = packs.packs.get(code) {
-                return Some(pack);
-            }
+        if let Some(code) = self.display_code.as_deref()
+            && let Some(pack) = packs.packs.get(code)
+        {
+            return Some(pack);
         }
         packs.packs.get("eng")
     }
@@ -227,10 +227,10 @@ impl ReportPacks {
 fn load_report_packs(display_lang: Option<&str>) -> ReportPacks {
     let display_code = display_lang.and_then(normalize_pack_code);
     let mut codes = Vec::new();
-    if let Some(code) = display_code.as_deref() {
-        if code != "eng" {
-            codes.push(code.to_string());
-        }
+    if let Some(code) = display_code.as_deref()
+        && code != "eng"
+    {
+        codes.push(code.to_string());
     }
     codes.push("eng".to_string());
 
@@ -431,10 +431,10 @@ fn format_history_datetime(value: &str) -> String {
         return "unknown".to_string();
     };
     let format = format_description::parse("[year]-[month]-[day] [hour]:[minute]");
-    if let Ok(format) = format {
-        if let Ok(rendered) = dt.format(&format) {
-            return rendered;
-        }
+    if let Ok(format) = format
+        && let Ok(rendered) = dt.format(&format)
+    {
+        return rendered;
     }
     dt.date().to_string()
 }
@@ -870,10 +870,10 @@ fn unix_to_date(value: &str) -> String {
         return "unknown".to_string();
     };
     let format = format_description::parse("[year]-[month]-[day]");
-    if let Ok(format) = format {
-        if let Ok(rendered) = dt.format(&format) {
-            return rendered;
-        }
+    if let Ok(format) = format
+        && let Ok(rendered) = dt.format(&format)
+    {
+        return rendered;
     }
     dt.date().to_string()
 }

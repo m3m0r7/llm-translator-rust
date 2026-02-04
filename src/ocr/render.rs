@@ -1,16 +1,16 @@
-use anyhow::{anyhow, Context, Result};
-use base64::engine::general_purpose::STANDARD as BASE64;
+use anyhow::{Context, Result, anyhow};
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use resvg::render;
 use std::io::Cursor;
 use std::sync::Arc;
 use tiny_skia::Pixmap;
-use usvg::{fontdb, Options, Tree};
+use usvg::{Options, Tree, fontdb};
 
 use super::{BBoxPx, OcrLine, OverlayStyle, TranslatedLine};
 use crate::ocr::engine::{
-    build_avoid_rects, choose_fixed_font_size, fit_text_to_box, has_avoid_below, resolve_overlap,
-    ResolveOverlapConfig,
+    ResolveOverlapConfig, build_avoid_rects, choose_fixed_font_size, fit_text_to_box,
+    has_avoid_below, resolve_overlap,
 };
 use crate::ocr::font::measure_text_width_px;
 

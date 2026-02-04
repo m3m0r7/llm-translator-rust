@@ -61,11 +61,13 @@ sudo make install
 ```
 
 참고:
-- macOS/Linux 기본 경로: `/usr/local/bin`(필요 시 `sudo make install`)
+- macOS/Linux default: `$XDG_RUNTIME_DIR` if set, otherwise `/usr/local/bin` (use `sudo make install` if needed)
 - Windows(MSYS/Git Bash): `%USERPROFILE%/.cargo/bin`
-- make writes build_env.toml and embeds it into the binary (portable builds don't need the file at runtime).
-- Override paths via env vars passed to make, e.g. BASE_DIRECTORY=~/.llm-translator-rust BIN_DIRECTORY=target/release INSTALL_DIRECTORY=/usr/local/bin SETTINGS_FILE=~/.llm-translator-rust/settings.toml BUILD_ENV_PATH=build_env.toml make
-- `make install` copies `settings.toml` to `baseDirectory` if it does not exist.
+- make writes build/build_env.toml and embeds it into the binary (portable builds don't need the file at runtime).
+- You can override paths via env vars passed to `make`, e.g.
+  `DATA_DIRECTORY=$XDG_DATA_HOME/llm-translator-rust CONFIG_DIRECTORY=$XDG_CONFIG_HOME/llm-translator-rust RUNTIME_DIRECTORY=$XDG_RUNTIME_DIR BIN_DIRECTORY=target/release BUILD_ENV_PATH=build/build_env.toml make`
+- `make install` copies `settings.toml` to the settings path (XDG config by default) if it does not exist.
+- `make install` copies headers from `ext/` into `$XDG_DATA_HOME/llm-translator-rust` if they do not exist.
 
 ## Quickstart
 
@@ -115,6 +117,7 @@ echo Awesome | llm-translator-rust -l ja --slang
 
 # Dictionary (part of speech/inflections)
 echo 猫 | llm-translator-rust --pos -l en
+echo play | llm-translator-rust --pos noun,verb -l en
 
 # File translation
 cat foobar.txt | llm-translator-rust -l en
@@ -162,7 +165,7 @@ llm-translator-rust --data ./docs -l ja
 ## Overwrite mode (--overwrite)
 
 `--overwrite`는 `--data`로 지정된 파일/디렉터리를 제자리에서 덮어씁니다.
-쓰기 전 백업은 `~/.llm-translator-rust/backup`에 저장됩니다.
+쓰기 전 백업은 `$XDG_DATA_HOME/llm-translator-rust/backup`에 저장됩니다.
 보관 기간은 `settings.toml`의 `[system].backup_ttl_days`로 설정됩니다(기본 30일).
 
 ```bash
@@ -182,12 +185,13 @@ llm-translator-rust --data ./slide.pdf -l en --out ./translated.pdf
 
 ## Dictionary (--pos)
 
-`--pos`는 입력 단어에 대한 사전형 정보를 반환합니다.
+`--pos`는 입력 단어에 대한 사전형 정보를 반환합니다. 쉼표로 품사를 지정해 필터링할 수 있으며, 영어 품사명도 사용할 수 있고 가능한 경우 원문 언어로 매핑합니다.
 
 사용법:
 
 ```
 echo 猫 | llm-translator-rust --pos -l en
+echo play | llm-translator-rust --pos noun,verb -l en
 ```
 
 예시 출력(라벨은 source language 기준):
@@ -302,11 +306,11 @@ Translated:
   - `~/.llm-translator/.cache/meta.json`(fallback: `./.llm-translator/.cache/meta.json`)
 - `--show-models-list`는 `provider:model` 형식으로 출력.
 - `--show-whisper-models`는 whisper 모델 목록 출력.
-- `--pos`는 사전형 상세 정보 출력.
+- `--pos [noun,verb]`는 사전형 상세 정보 출력.
 - `--correction`은 교정 결과와 이유 출력(소스 언어).
 - `--whisper-model`은 오디오 전사 모델 선택.
 - `--model`이 없으면 `meta.json`의 `lastUsingModel`을 우선 사용.
-- 히스토리는 `meta.json`에 저장, 결과는 `~/.llm-translator-rust/.cache/dest/<md5>`.
+- 히스토리는 `meta.json`에 저장, 결과는 `$XDG_DATA_HOME/llm-translator-rust/.cache/dest/<md5>`.
 - 이미지/PDF는 OCR(tesseract) 후 LLM으로 정규화하고 번호 오버레이+풋터 목록으로 렌더링.
 - Office(docx/xlsx/pptx)는 XML 텍스트 노드를 번역해 재작성.
 - 출력 MIME은 입력과 동일.
@@ -329,8 +333,8 @@ Provider model APIs:
 
 설정 파일 로드 순서(우선순위 높은 순):
 
-1. `~/.llm-translator-rust/settings.local.toml`
-2. `~/.llm-translator-rust/settings.toml`
+1. `$XDG_CONFIG_HOME/llm-translator-rust/settings.local.toml (fallback: ~/.config/llm-translator-rust/settings.local.toml)`
+2. `$XDG_CONFIG_HOME/llm-translator-rust/settings.toml` (fallback: `~/.config/llm-translator-rust/settings.toml`)
 3. `./settings.local.toml`
 4. `./settings.toml`
 
@@ -400,7 +404,7 @@ eng = "英語"
 |  | `--show-enabled-styles` | 활성 스타일 표시 |  |
 |  | `--show-models-list` | 캐시된 모델 목록 표시 |  |
 |  | `--show-whisper-models` | whisper 모델 목록 표시 |  |
-|  | `--pos` | 사전형 출력(POS/활용) |  |
+|  | `--pos [noun,verb]` | 사전형 출력(POS/활용) |  |
 |  | `--correction` | 교정 결과 출력 |  |
 |  | `--details` | Detailed translations across all formal styles |  |
 |  | `--report` | Generate a translation report (html/xml/json) |  |
@@ -411,7 +415,7 @@ eng = "英語"
 |  | `--force` | MIME 판정이 불확실할 때 텍스트로 처리 |  |
 |  | `--debug-ocr` | OCR 디버그 오버레이/JSON 출력 |  |
 |  | `--whisper-model` | Whisper 모델 이름/경로 |  |
-|  | `--overwrite` | 파일 덮어쓰기(백업 `~/.llm-translator-rust/backup`) |  |
+|  | `--overwrite` | 파일 덮어쓰기(백업 `$XDG_DATA_HOME/llm-translator-rust/backup`) |  |
 |  | `--directory-translation-threads` | 디렉터리 번역 병렬 수 |  |
 |  | `--ignore-translation-file` | 제외 패턴(gitignore 스타일) |  |
 | `-o` | `--out` | 출력 경로 |  |

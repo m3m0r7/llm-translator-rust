@@ -8,7 +8,7 @@ use super::error::{cstr_to_string, set_last_error, string_to_c};
 use super::runtime::runtime;
 use super::settings::ExtSettings;
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn llm_ext_run(config: *const ExtConfig, input: *const c_char) -> *mut c_char {
     let Some(config) = (unsafe { config.as_ref() }) else {
         set_last_error("config is null");
@@ -24,7 +24,7 @@ pub extern "C" fn llm_ext_run(config: *const ExtConfig, input: *const c_char) ->
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn llm_ext_run_with_settings(
     config: *const ExtConfig,
     settings: *const ExtSettings,

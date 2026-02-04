@@ -2,17 +2,29 @@ use anyhow::{Context, Result};
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::providers::{Provider, ToolSpec};
 use crate::Translator;
+use crate::providers::{Provider, ToolSpec};
 
 const TOOL_NAME: &str = "generate_history_tags";
 const MAX_TEXT_LEN: usize = 600;
 const MAX_TAGS: usize = 8;
+const MAX_CATEGORIES: usize = 6;
+const MAX_KEYWORDS: usize = 12;
+
+pub struct HistoryTagResult {
+    pub tags: Vec<String>,
+    pub categories: Vec<String>,
+    pub keywords: Vec<String>,
+}
 
 #[derive(Debug, Default, Deserialize)]
 struct TagResponse {
     #[serde(default)]
     tags: Vec<String>,
+    #[serde(default)]
+    categories: Vec<String>,
+    #[serde(default)]
+    keywords: Vec<String>,
 }
 
 pub async fn generate_history_tags<P: Provider + Clone>(
@@ -20,10 +32,14 @@ pub async fn generate_history_tags<P: Provider + Clone>(
     text: &str,
     source_lang: &str,
     target_lang: &str,
-) -> Result<Vec<String>> {
+) -> Result<HistoryTagResult> {
     let trimmed = text.trim();
     if trimmed.is_empty() {
-        return Ok(Vec::new());
+        return Ok(HistoryTagResult {
+            tags: Vec::new(),
+            categories: Vec::new(),
+            keywords: Vec::new(),
+        });
     }
 
     let prompt = render_prompt()?;
@@ -40,22 +56,34 @@ pub async fn generate_history_tags<P: Provider + Clone>(
     let parsed: TagResponse = serde_json::from_value(response.args)
         .with_context(|| "failed to parse history tag response")?;
 
-    Ok(normalize_tags(parsed.tags))
+    Ok(HistoryTagResult {
+        tags: normalize_list(parsed.tags, MAX_TAGS),
+        categories: normalize_list(parsed.categories, MAX_CATEGORIES),
+        keywords: normalize_list(parsed.keywords, MAX_KEYWORDS),
+    })
 }
 
 fn tool_spec() -> ToolSpec {
     ToolSpec {
         name: TOOL_NAME.to_string(),
-        description: "Generate short topic tags for translation history.".to_string(),
+        description: "Generate tags, categories, and keywords for translation history.".to_string(),
         parameters: json!({
             "type": "object",
             "properties": {
                 "tags": {
                     "type": "array",
                     "items": { "type": "string" }
+                },
+                "categories": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                },
+                "keywords": {
+                    "type": "array",
+                    "items": { "type": "string" }
                 }
             },
-            "required": ["tags"]
+            "required": ["tags", "categories", "keywords"]
         }),
     }
 }
@@ -89,11 +117,11 @@ fn truncate_text(text: &str, max_len: usize) -> String {
     text.chars().take(max_len).collect()
 }
 
-fn normalize_tags(tags: Vec<String>) -> Vec<String> {
+fn normalize_list(items: Vec<String>, max_items: usize) -> Vec<String> {
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::new();
-    for tag in tags {
-        let trimmed = tag.trim();
+    for item in items {
+        let trimmed = item.trim();
         if trimmed.is_empty() {
             continue;
         }
@@ -101,7 +129,7 @@ fn normalize_tags(tags: Vec<String>) -> Vec<String> {
         if seen.insert(key) {
             out.push(trimmed.to_string());
         }
-        if out.len() >= MAX_TAGS {
+        if out.len() >= max_items {
             break;
         }
     }

@@ -14,7 +14,9 @@ pub(crate) fn set_base_dir_if_override(value: &str) {
             return;
         }
     }
-    std::env::set_var(BASE_DIR_ENV, normalized.to_string_lossy().as_ref());
+    unsafe {
+        std::env::set_var(BASE_DIR_ENV, normalized.to_string_lossy().as_ref());
+    }
 }
 
 pub(crate) fn settings_dir() -> Option<PathBuf> {
@@ -36,32 +38,32 @@ pub(crate) fn history_dest_dir() -> PathBuf {
     if let Some(dir) = base_dir_override() {
         return dir.join(".cache/dest");
     }
-    home_join(".llm-translator-rust/.cache/dest")
-        .unwrap_or_else(|| PathBuf::from(".llm-translator-rust/.cache/dest"))
+    home_join(".local/share/llm-translator-rust/.cache/dest")
+        .unwrap_or_else(|| PathBuf::from(".local/share/llm-translator-rust/.cache/dest"))
 }
 
 pub(crate) fn whisper_dir() -> PathBuf {
     if let Some(dir) = base_dir_override() {
         return dir.join(".cache/whisper");
     }
-    home_join(".llm-translator-rust/.cache/whisper")
-        .unwrap_or_else(|| PathBuf::from(".llm-translator-rust/.cache/whisper"))
+    home_join(".local/share/llm-translator-rust/.cache/whisper")
+        .unwrap_or_else(|| PathBuf::from(".local/share/llm-translator-rust/.cache/whisper"))
 }
 
 pub(crate) fn ocr_debug_dir() -> PathBuf {
     if let Some(dir) = base_dir_override() {
         return dir.join(".cache/ocr");
     }
-    home_join(".llm-translator-rust/.cache/ocr")
-        .unwrap_or_else(|| PathBuf::from(".llm-translator-rust/.cache/ocr"))
+    home_join(".local/share/llm-translator-rust/.cache/ocr")
+        .unwrap_or_else(|| PathBuf::from(".local/share/llm-translator-rust/.cache/ocr"))
 }
 
 pub(crate) fn backup_dir() -> PathBuf {
     if let Some(dir) = base_dir_override() {
         return dir.join("backup");
     }
-    home_join(".llm-translator-rust/backup")
-        .unwrap_or_else(|| PathBuf::from(".llm-translator-rust/backup"))
+    home_join(".local/share/llm-translator-rust/backup")
+        .unwrap_or_else(|| PathBuf::from(".local/share/llm-translator-rust/backup"))
 }
 
 fn base_dir_override() -> Option<PathBuf> {
@@ -76,7 +78,7 @@ fn default_base_dir() -> Option<PathBuf> {
         if home.is_empty() {
             None
         } else {
-            Some(Path::new(home).join(".llm-translator-rust"))
+            Some(Path::new(home).join(".local/share/llm-translator-rust"))
         }
     })
 }
@@ -85,7 +87,7 @@ fn default_base_dir_for_compare() -> Option<PathBuf> {
     if let Some(path) = default_base_dir() {
         return Some(normalize_path(path));
     }
-    Some(normalize_path(PathBuf::from(".llm-translator-rust")))
+    Some(normalize_path(PathBuf::from(".local/share/llm-translator-rust")))
 }
 
 fn home_join(suffix: &str) -> Option<PathBuf> {

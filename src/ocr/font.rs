@@ -1,8 +1,8 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use std::path::Path;
 use std::sync::Arc;
-use ttf_parser::name_id;
 use ttf_parser::Face;
+use ttf_parser::name_id;
 use usvg::fontdb;
 
 #[derive(Clone)]
@@ -68,27 +68,27 @@ pub fn resolve_overlay_font(
 }
 
 pub(crate) fn measure_text_width_px(text: &str, font_size: f32, font: Option<&FontMetrics>) -> f32 {
-    if let Some(font) = font {
-        if let Ok(face) = Face::parse(&font.data, font.face_index) {
-            let mut advance = 0u32;
-            for ch in text.chars() {
-                if ch == '\n' {
-                    continue;
-                }
-                if ch == ' ' {
-                    advance = advance.saturating_add(font.space_advance as u32);
-                    continue;
-                }
-                if let Some(glyph) = face.glyph_index(ch) {
-                    let glyph_advance = face.glyph_hor_advance(glyph).unwrap_or(font.space_advance);
-                    advance = advance.saturating_add(glyph_advance as u32);
-                } else {
-                    advance = advance.saturating_add(font.space_advance as u32);
-                }
+    if let Some(font) = font
+        && let Ok(face) = Face::parse(&font.data, font.face_index)
+    {
+        let mut advance = 0u32;
+        for ch in text.chars() {
+            if ch == '\n' {
+                continue;
             }
-            let units = font.units_per_em.max(1) as f32;
-            return advance as f32 * (font_size / units);
+            if ch == ' ' {
+                advance = advance.saturating_add(font.space_advance as u32);
+                continue;
+            }
+            if let Some(glyph) = face.glyph_index(ch) {
+                let glyph_advance = face.glyph_hor_advance(glyph).unwrap_or(font.space_advance);
+                advance = advance.saturating_add(glyph_advance as u32);
+            } else {
+                advance = advance.saturating_add(font.space_advance as u32);
+            }
         }
+        let units = font.units_per_em.max(1) as f32;
+        return advance as f32 * (font_size / units);
     }
     estimate_text_width_units(text) * font_size
 }
@@ -132,10 +132,10 @@ fn load_font_metrics_from_data(data: &[u8], preferred_family: Option<&str>) -> R
                 family: family.clone(),
                 face_index: index,
             };
-            if let (Some(preferred), Some(found)) = (preferred_family, &family) {
-                if found.eq_ignore_ascii_case(preferred) {
-                    return Ok(metrics);
-                }
+            if let (Some(preferred), Some(found)) = (preferred_family, &family)
+                && found.eq_ignore_ascii_case(preferred)
+            {
+                return Ok(metrics);
             }
             if fallback.is_none() {
                 fallback = Some(metrics);

@@ -2,7 +2,8 @@ use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-const BUILD_ENV_TOML: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/build_env.toml"));
+const BUILD_ENV_TOML: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/build/build_env.toml"));
 
 macro_rules! build_env_toml {
     () => {
@@ -12,25 +13,29 @@ macro_rules! build_env_toml {
 
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct BuildEnv {
-    #[serde(rename = "baseDirectory")]
-    base_directory: String,
+    #[serde(rename = "dataDirectory", alias = "baseDirectory")]
+    data_directory: String,
     #[allow(dead_code)]
     #[serde(rename = "binDirectory")]
     bin_directory: String,
     #[allow(dead_code)]
-    #[serde(rename = "installDirectory")]
-    install_directory: String,
-    #[serde(rename = "settingsFile")]
+    #[serde(rename = "runtimeDirectory", alias = "installDirectory")]
+    runtime_directory: String,
+    #[allow(dead_code)]
+    #[serde(rename = "configDirectory", default)]
+    config_directory: String,
+    #[serde(rename = "settingsFile", default)]
     settings_file: String,
 }
 
 impl Default for BuildEnv {
     fn default() -> Self {
         Self {
-            base_directory: "~/.llm-translator-rust".to_string(),
+            data_directory: "$XDG_DATA_HOME/llm-translator-rust".to_string(),
             bin_directory: "target/release".to_string(),
-            install_directory: "/usr/local/bin".to_string(),
-            settings_file: "~/.llm-translator-rust/settings.toml".to_string(),
+            runtime_directory: "$XDG_RUNTIME_DIR".to_string(),
+            config_directory: "$XDG_CONFIG_HOME/llm-translator-rust".to_string(),
+            settings_file: "".to_string(),
         }
     }
 }
@@ -38,6 +43,7 @@ impl Default for BuildEnv {
 static BUILD_ENV: OnceLock<BuildEnv> = OnceLock::new();
 
 const BASE_DIR_ENV: &str = "LLM_TRANSLATOR_RUST_DIR";
+const XDG_APP_DIR: &str = "llm-translator-rust";
 
 pub(crate) fn build_env() -> &'static BuildEnv {
     BUILD_ENV
@@ -48,8 +54,13 @@ pub(crate) fn base_dir() -> PathBuf {
     if let Some(dir) = base_dir_override() {
         return dir;
     }
-    normalize_dir(&build_env().base_directory)
-        .unwrap_or_else(|| PathBuf::from(".llm-translator-rust"))
+    let raw = build_env().data_directory.trim();
+    if !raw.is_empty() {
+        if let Some(dir) = normalize_dir(raw) {
+            return dir;
+        }
+    }
+    default_data_dir()
 }
 
 pub(crate) fn settings_file() -> PathBuf {
@@ -57,10 +68,18 @@ pub(crate) fn settings_file() -> PathBuf {
         return dir.join("settings.toml");
     }
     let raw = build_env().settings_file.trim();
-    if raw.is_empty() {
-        return base_dir().join("settings.toml");
+    if !raw.is_empty() {
+        return normalize_path(PathBuf::from(expand_path(raw)));
     }
-    normalize_path(PathBuf::from(expand_home(raw)))
+    let config_raw = build_env().config_directory.trim();
+    if !config_raw.is_empty() {
+        let dir = normalize_path(PathBuf::from(expand_path(config_raw)));
+        return dir.join("settings.toml");
+    }
+    if let Some(dir) = xdg_config_home() {
+        return dir.join(XDG_APP_DIR).join("settings.toml");
+    }
+    base_dir().join("settings.toml")
 }
 
 pub(crate) fn settings_dir() -> PathBuf {
@@ -101,7 +120,7 @@ fn normalize_dir(value: &str) -> Option<PathBuf> {
     if trimmed.is_empty() {
         return None;
     }
-    let expanded = expand_home(trimmed);
+    let expanded = expand_path(trimmed);
     Some(normalize_path(PathBuf::from(expanded)))
 }
 
@@ -113,31 +132,130 @@ fn normalize_path(path: PathBuf) -> PathBuf {
     normalized
 }
 
-fn expand_home(value: &str) -> String {
-    if value == "~" {
-        return env_home().unwrap_or_else(|| value.to_string());
+fn expand_path(value: &str) -> String {
+    let expanded = expand_env_prefix(value);
+    expand_home(&expanded)
+}
+
+fn expand_env_prefix(value: &str) -> String {
+    let data_home = xdg_data_home().map(|path| path.to_string_lossy().to_string());
+    if let Some(replaced) = expand_named_prefix(value, "XDG_DATA_HOME", data_home) {
+        return replaced;
     }
-    if let Some(stripped) = value.strip_prefix("~/") {
-        if let Some(home) = env_home() {
-            let joined = Path::new(&home).join(stripped);
-            return joined.to_string_lossy().to_string();
-        }
+    let config_home = xdg_config_home().map(|path| path.to_string_lossy().to_string());
+    if let Some(replaced) = expand_named_prefix(value, "XDG_CONFIG_HOME", config_home) {
+        return replaced;
+    }
+    let state_home = xdg_state_home().map(|path| path.to_string_lossy().to_string());
+    if let Some(replaced) = expand_named_prefix(value, "XDG_STATE_HOME", state_home) {
+        return replaced;
+    }
+    let cache_home = xdg_cache_home().map(|path| path.to_string_lossy().to_string());
+    if let Some(replaced) = expand_named_prefix(value, "XDG_CACHE_HOME", cache_home) {
+        return replaced;
+    }
+    if let Some(replaced) = expand_named_prefix(
+        value,
+        "XDG_RUNTIME_DIR",
+        xdg_runtime_dir().map(|path| path.to_string_lossy().to_string()),
+    ) {
+        return replaced;
+    }
+    let home = env_home();
+    if let Some(replaced) = expand_named_prefix(value, "HOME", home.clone()) {
+        return replaced;
+    }
+    if let Some(replaced) = expand_named_prefix(value, "USERPROFILE", home) {
+        return replaced;
     }
     value.to_string()
 }
 
-fn env_home() -> Option<String> {
-    if let Ok(home) = std::env::var("HOME") {
-        let home = home.trim();
-        if !home.is_empty() {
-            return Some(home.to_string());
+fn expand_named_prefix(value: &str, key: &str, fallback: Option<String>) -> Option<String> {
+    let env_value = std::env::var(key).ok().and_then(|value| {
+        let trimmed = value.trim().to_string();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
         }
+    });
+    let replacement = env_value.or(fallback)?;
+    let prefix = format!("${}", key);
+    if let Some(rest) = value.strip_prefix(&prefix) {
+        return Some(format!("{}{}", replacement, rest));
     }
-    if let Ok(home) = std::env::var("USERPROFILE") {
-        let home = home.trim();
-        if !home.is_empty() {
-            return Some(home.to_string());
-        }
+    let brace_prefix = format!("${{{}}}", key);
+    if let Some(rest) = value.strip_prefix(&brace_prefix) {
+        return Some(format!("{}{}", replacement, rest));
     }
     None
+}
+
+fn expand_home(value: &str) -> String {
+    if value == "~" {
+        return env_home().unwrap_or_else(|| value.to_string());
+    }
+    if let Some(stripped) = value.strip_prefix("~/")
+        && let Some(home) = env_home()
+    {
+        let joined = Path::new(&home).join(stripped);
+        return joined.to_string_lossy().to_string();
+    }
+    value.to_string()
+}
+
+fn default_data_dir() -> PathBuf {
+    xdg_data_home()
+        .unwrap_or_else(|| PathBuf::from(".local/share"))
+        .join(XDG_APP_DIR)
+}
+
+fn env_home() -> Option<String> {
+    env_value("HOME").or_else(|| env_value("USERPROFILE"))
+}
+
+fn xdg_config_home() -> Option<PathBuf> {
+    if let Some(home) = env_value("XDG_CONFIG_HOME") {
+        return Some(normalize_path(PathBuf::from(expand_home(&home))));
+    }
+    env_home().map(|home| PathBuf::from(home).join(".config"))
+}
+
+fn xdg_data_home() -> Option<PathBuf> {
+    if let Some(home) = env_value("XDG_DATA_HOME") {
+        return Some(normalize_path(PathBuf::from(expand_home(&home))));
+    }
+    env_home().map(|home| PathBuf::from(home).join(".local/share"))
+}
+
+fn xdg_cache_home() -> Option<PathBuf> {
+    if let Some(home) = env_value("XDG_CACHE_HOME") {
+        return Some(normalize_path(PathBuf::from(expand_home(&home))));
+    }
+    env_home().map(|home| PathBuf::from(home).join(".cache"))
+}
+
+fn xdg_state_home() -> Option<PathBuf> {
+    if let Some(home) = env_value("XDG_STATE_HOME") {
+        return Some(normalize_path(PathBuf::from(expand_home(&home))));
+    }
+    env_home().map(|home| PathBuf::from(home).join(".local/state"))
+}
+
+fn xdg_runtime_dir() -> Option<PathBuf> {
+    if let Some(home) = env_value("XDG_RUNTIME_DIR") {
+        return Some(normalize_path(PathBuf::from(expand_home(&home))));
+    }
+    None
+}
+
+fn env_value(key: &str) -> Option<String> {
+    let value = std::env::var(key).ok()?;
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
 }

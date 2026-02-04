@@ -61,11 +61,13 @@ sudo make install
 ```
 
 注意：
-- macOS/Linux 默认安装到 `/usr/local/bin`（必要时使用 `sudo make install`）
+- macOS/Linux default: `$XDG_RUNTIME_DIR` if set, otherwise `/usr/local/bin` (use `sudo make install` if needed)
 - Windows（MSYS/Git Bash）：`%USERPROFILE%/.cargo/bin`
-- make writes build_env.toml and embeds it into the binary (portable builds don't need the file at runtime).
-- Override paths via env vars passed to make, e.g. BASE_DIRECTORY=~/.llm-translator-rust BIN_DIRECTORY=target/release INSTALL_DIRECTORY=/usr/local/bin SETTINGS_FILE=~/.llm-translator-rust/settings.toml BUILD_ENV_PATH=build_env.toml make
-- `make install` copies `settings.toml` to `baseDirectory` if it does not exist.
+- make writes build/build_env.toml and embeds it into the binary (portable builds don't need the file at runtime).
+- You can override paths via env vars passed to `make`, e.g.
+  `DATA_DIRECTORY=$XDG_DATA_HOME/llm-translator-rust CONFIG_DIRECTORY=$XDG_CONFIG_HOME/llm-translator-rust RUNTIME_DIRECTORY=$XDG_RUNTIME_DIR BIN_DIRECTORY=target/release BUILD_ENV_PATH=build/build_env.toml make`
+- `make install` copies `settings.toml` to the settings path (XDG config by default) if it does not exist.
+- `make install` copies headers from `ext/` into `$XDG_DATA_HOME/llm-translator-rust` if they do not exist.
 
 ## Quickstart
 
@@ -115,6 +117,7 @@ echo Awesome | llm-translator-rust -l ja --slang
 
 # Dictionary (part of speech/inflections)
 echo 猫 | llm-translator-rust --pos -l en
+echo play | llm-translator-rust --pos noun,verb -l en
 
 # File translation
 cat foobar.txt | llm-translator-rust -l en
@@ -162,7 +165,7 @@ llm-translator-rust --data ./docs -l ja
 ## Overwrite mode (--overwrite)
 
 `--overwrite` 会对 `--data` 的文件或目录原地写入。
-写入前会备份到 `~/.llm-translator-rust/backup`。
+写入前会备份到 `$XDG_DATA_HOME/llm-translator-rust/backup`。
 保留天数由 `settings.toml` `[system].backup_ttl_days` 控制（默认 30）。
 
 ```bash
@@ -182,12 +185,13 @@ llm-translator-rust --data ./slide.pdf -l en --out ./translated.pdf
 
 ## Dictionary (--pos)
 
-`--pos` 返回词典式信息。
+`--pos` 返回词典式信息。可用逗号分隔指定词性；英文词性名也可用，会尽量映射到源语言。
 
 使用方法：
 
 ```
 echo 猫 | llm-translator-rust --pos -l en
+echo play | llm-translator-rust --pos noun,verb -l en
 ```
 
 示例输出（标签跟随源语言）：
@@ -302,11 +306,11 @@ Translated:
   - `~/.llm-translator/.cache/meta.json`（`HOME` 未设置时为 `./.llm-translator/.cache/meta.json`）
 - `--show-models-list` 以 `provider:model` 每行打印缓存列表。
 - `--show-whisper-models` 输出可用 whisper 模型名。
-- `--pos` 返回词典式详情（译词+读音、词性、别译、活用、用法/用例）。
+- `--pos [noun,verb]` 返回词典式详情（译词+读音、词性、别译、活用、用法/用例）。
 - `--correction` 返回校对结果与原因（源语言）。
 - `--whisper-model` 指定音频转写模型名或路径。
 - 未指定 `--model` 时优先使用 `meta.json` 的 `lastUsingModel`（无效时回退到默认选择）。
-- 历史记录存于 `meta.json`。目标文件写入 `~/.llm-translator-rust/.cache/dest/<md5>`。
+- 历史记录存于 `meta.json`。目标文件写入 `$XDG_DATA_HOME/llm-translator-rust/.cache/dest/<md5>`。
 - 图像/PDF 使用 OCR（tesseract），再由 LLM 规范化文本并重绘编号标注与脚注列表。
 - Office 文件（docx/xlsx/pptx）通过翻译 XML 文本节点重写。
 - 输出 MIME 与输入一致（例如 png 仍为 png，pdf 仍为 pdf）。
@@ -329,8 +333,8 @@ Provider model APIs:
 
 设置文件加载优先级（从高到低）：
 
-1. `~/.llm-translator-rust/settings.local.toml`
-2. `~/.llm-translator-rust/settings.toml`
+1. `$XDG_CONFIG_HOME/llm-translator-rust/settings.local.toml (fallback: ~/.config/llm-translator-rust/settings.local.toml)`
+2. `$XDG_CONFIG_HOME/llm-translator-rust/settings.toml` (fallback: `~/.config/llm-translator-rust/settings.toml`)
 3. `./settings.local.toml`
 4. `./settings.toml`
 
@@ -400,7 +404,7 @@ eng = "英語"
 |  | `--show-enabled-styles` | 显示可用风格键 |  |
 |  | `--show-models-list` | 显示缓存模型列表（provider:model） |  |
 |  | `--show-whisper-models` | 显示 whisper 模型名 |  |
-|  | `--pos` | 词典式输出（词性/活用） |  |
+|  | `--pos [noun,verb]` | 词典式输出（词性/活用） |  |
 |  | `--correction` | 校对输入并给出指正 |  |
 |  | `--details` | Detailed translations across all formal styles |  |
 |  | `--report` | Generate a translation report (html/xml/json) |  |
@@ -411,7 +415,7 @@ eng = "英語"
 |  | `--force` | MIME 判定不确定时强制按文本翻译 |  |
 |  | `--debug-ocr` | 输出 OCR 调试叠加/JSON |  |
 |  | `--whisper-model` | Whisper 模型名或路径 |  |
-|  | `--overwrite` | 覆盖写入（备份在 `~/.llm-translator-rust/backup`） |  |
+|  | `--overwrite` | 覆盖写入（备份在 `$XDG_DATA_HOME/llm-translator-rust/backup`） |  |
 |  | `--directory-translation-threads` | 目录翻译并发数 |  |
 |  | `--ignore-translation-file` | 目录翻译忽略规则（gitignore 风格） |  |
 | `-o` | `--out` | 翻译输出路径 |  |
