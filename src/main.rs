@@ -328,7 +328,12 @@ async fn run_interactive(cli: Cli) -> Result<()> {
         if stdin_lock.read_line(&mut line)? == 0 {
             break;
         }
-        let input = line.trim();
+        let raw = line.trim_end_matches(&['\r', '\n'][..]);
+        if is_clear_shortcut(raw) {
+            clear_screen()?;
+            continue;
+        }
+        let input = raw.trim();
         if input.is_empty() {
             continue;
         }
@@ -346,6 +351,32 @@ async fn run_interactive(cli: Cli) -> Result<()> {
     Ok(())
 }
 
+fn clear_screen() -> Result<()> {
+    use std::io::Write;
+    let mut stdout = io::stdout();
+    stdout.write_all(b"\x1b[2J\x1b[H")?;
+    stdout.flush()?;
+    Ok(())
+}
+
+fn is_clear_shortcut(raw: &str) -> bool {
+    if raw.is_empty() {
+        return false;
+    }
+    let mut saw_clear = false;
+    for ch in raw.chars() {
+        if ch == '\u{000b}' || ch == '\u{000c}' {
+            saw_clear = true;
+            continue;
+        }
+        if ch.is_whitespace() {
+            continue;
+        }
+        return false;
+    }
+    saw_clear
+}
+
 async fn handle_interactive_command(input: &str, state: &mut InteractiveState) -> Result<bool> {
     let trimmed = input.trim();
     if matches!(trimmed, "/quit" | "/exit") {
@@ -353,6 +384,10 @@ async fn handle_interactive_command(input: &str, state: &mut InteractiveState) -
     }
     if trimmed == "/help" {
         print_interactive_help();
+        return Ok(false);
+    }
+    if trimmed == "/clear" {
+        clear_screen()?;
         return Ok(false);
     }
     if trimmed == "/show-models-list" {
@@ -549,6 +584,7 @@ fn parse_toggle(arg: &str, current: bool) -> Result<bool> {
 fn print_interactive_help() {
     println!("Commands:");
     println!("  /quit, /exit                 Exit interactive mode");
+    println!("  /clear                       Clear the screen (Cmd+K if supported)");
     println!("  /show-models-list            Show cached models");
     println!("  /show-whisper-models          Show whisper model names");
     println!("  /show-histories              Show translation histories");
