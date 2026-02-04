@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Tag to release (e.g. v0.1.5)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -48,7 +54,50 @@ jobs:
     runs-on: ${{ matrix.runner }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release tag
+        id: resolve_tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            version="${{ inputs.version }}"
+            candidates=()
+
+            if [[ "$version" == v* ]]; then
+              candidates+=("$version" "${version#v}")
+            else
+              candidates+=("$version" "v$version")
+            fi
+
+            git fetch --tags --force
+
+            tag=""
+            for candidate in "${candidates[@]}"; do
+              if git rev-parse -q --verify "refs/tags/$candidate" >/dev/null; then
+                tag="$candidate"
+                break
+              fi
+            done
+
+            if [ -z "$tag" ]; then
+              echo "Tag not found for version: $version" >&2
+              echo "Tried: ${candidates[*]}" >&2
+              echo "Available tags:" >&2
+              git tag -l >&2
+              exit 1
+            fi
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+
+          git checkout "$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -105,4 +154,6 @@ jobs:
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.resolve_tag.outputs.tag }}
+          name: ${{ steps.resolve_tag.outputs.tag }}
           files: dist/*
