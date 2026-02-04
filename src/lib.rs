@@ -506,6 +506,7 @@ async fn run_with_loaded_settings(
             let entry = model_registry::HistoryEntry {
                 datetime,
                 model: format!("{}:{}", selection.provider.as_str(), history_model),
+                formal: Some(options.formality.clone()),
                 mime: output.mime.clone(),
                 kind: model_registry::HistoryType::Attachment,
                 source_language: normalize_lang_for_history(&options.source_lang),
@@ -576,6 +577,7 @@ async fn run_with_loaded_settings(
         &execution.text,
         &options.source_lang,
         &options.lang,
+        &options.formality,
         tags,
     ) {
         eprintln!("warning: failed to record history: {}", err);
@@ -1024,6 +1026,7 @@ async fn process_dir_file<P: Provider + Clone>(
             let entry = model_registry::HistoryEntry {
                 datetime,
                 model: format!("{}:{}", shared.provider.as_str(), shared.history_model),
+                formal: Some(shared.options.formality.clone()),
                 mime: output.mime.clone(),
                 kind: model_registry::HistoryType::Attachment,
                 source_language: normalize_lang_for_history(&shared.options.source_lang),
@@ -1119,6 +1122,9 @@ fn show_histories() -> Result<String> {
         lines.push(format!("  datetime: {}", entry.datetime));
         lines.push(format!("  type: {}", entry.kind.as_str()));
         lines.push(format!("  model: {}", entry.model));
+        if let Some(formal) = entry.formal.as_deref() {
+            lines.push(format!("  formal: {}", formal));
+        }
         lines.push(format!("  mime: {}", entry.mime));
         lines.push(format!("  src: {}", summarize_history_value(&entry.src)));
         lines.push(format!("  dest: {}", summarize_history_value(&entry.dest)));
@@ -1174,6 +1180,7 @@ fn record_history(
     output_text: &str,
     source_lang: &str,
     target_lang: &str,
+    formal: &str,
     tags: Option<Vec<String>>,
 ) -> Result<()> {
     let datetime = SystemTime::now()
@@ -1205,6 +1212,7 @@ fn record_history(
     let entry = model_registry::HistoryEntry {
         datetime,
         model: full_model,
+        formal: normalize_formality_for_history(formal),
         mime,
         kind,
         source_language: normalize_lang_for_history(source_lang),
@@ -1222,6 +1230,15 @@ fn normalize_lang_for_history(value: &str) -> Option<String> {
         None
     } else {
         Some(trimmed.to_lowercase())
+    }
+}
+
+fn normalize_formality_for_history(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
     }
 }
 

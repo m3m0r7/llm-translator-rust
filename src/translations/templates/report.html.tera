@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{{ labels.report_title }}</title>
   <style>
-    :root { --bg: #0f172a; --panel: #111827; --panel-2: #0b1220; --accent: #38bdf8; --accent-2: #f59e0b; --text: #e5e7eb; --muted: #9ca3af; --border: #1f2937; }
+    :root { --bg: #0b1220; --panel: #0f1a14; --panel-2: #0b120f; --accent: #34d399; --accent-2: #86efac; --text: #e5e7eb; --muted: #9ca3af; --border: #1f2a24; }
     * { box-sizing: border-box; }
-    body { margin: 0; font-family: "IBM Plex Sans", "Segoe UI", sans-serif; background: radial-gradient(circle at 15% 20%, #1e293b 0%, #0f172a 45%, #070b14 100%); color: var(--text); }
-    header { padding: 40px 24px 20px; max-width: 1100px; margin: 0 auto; }
+    body { margin: 0; font-family: "IBM Plex Sans", "Segoe UI", sans-serif; background: radial-gradient(circle at 15% 20%, #1e2b23 0%, #0b1220 45%, #060b08 100%); color: var(--text); }
+    header { padding: 40px 24px 20px; width: 80%; max-width: 1200px; margin: 0 auto; }
     h1 { margin: 0 0 6px; font-size: 32px; letter-spacing: 0.02em; }
     .subtitle { color: var(--muted); font-size: 14px; }
-    main { max-width: 1100px; margin: 0 auto; padding: 0 24px 48px; }
+    main { width: 80%; max-width: 1200px; margin: 0 auto; padding: 0 24px 48px; }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
     .card { background: linear-gradient(160deg, var(--panel) 0%, var(--panel-2) 100%); border: 1px solid var(--border); border-radius: 16px; padding: 16px; box-shadow: 0 12px 24px rgba(0,0,0,0.2); }
     .card h2 { margin: 0 0 10px; font-size: 16px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; }
@@ -26,10 +26,10 @@
     .cluster { margin-bottom: 14px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: rgba(15, 23, 42, 0.6); }
     .cluster-title { font-weight: 600; margin-bottom: 6px; }
     .keyword { display: flex; flex-wrap: wrap; gap: 8px; }
-    .tag { background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.35); padding: 4px 8px; border-radius: 999px; font-size: 12px; }
+    .tag { background: rgba(52, 211, 153, 0.12); border: 1px solid rgba(52, 211, 153, 0.35); padding: 4px 8px; border-radius: 999px; font-size: 12px; }
     .chart { display: flex; align-items: flex-end; gap: 10px; height: 180px; padding: 12px 6px 4px; }
     .bar { flex: 1 1 0; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 22px; }
-    .bar-fill { width: 100%; border-radius: 8px 8px 4px 4px; background: linear-gradient(180deg, var(--accent) 0%, #0ea5e9 100%); }
+    .bar-fill { width: 100%; border-radius: 8px 8px 4px 4px; background: linear-gradient(180deg, var(--accent) 0%, #16a34a 100%); }
     .bar-value { font-size: 11px; color: var(--muted); }
     .bar-label { font-size: 10px; color: var(--muted); transform: rotate(-35deg); white-space: nowrap; }
     .table-wrap { overflow-x: auto; }
@@ -78,6 +78,7 @@
             <tr>
               <th>{{ labels.history_date }}</th>
               <th>{{ labels.history_type }}</th>
+              <th>{{ labels.history_formality }}</th>
               <th>{{ labels.history_source_lang }}</th>
               <th>{{ labels.history_target_lang }}</th>
               <th>{{ labels.history_source_text }}</th>
@@ -90,6 +91,7 @@
             <tr>
               <td>{{ item.datetime }}</td>
               <td>{{ item.kind }}</td>
+              <td>{% if item.formality != "" %}{{ item.formality }}{% else %}-{% endif %}</td>
               <td>{{ item.source_lang }}</td>
               <td>{{ item.target_lang }}</td>
               <td class="text-cell">{{ item.source_text }}</td>

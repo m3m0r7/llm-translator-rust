@@ -56,6 +56,7 @@ pub struct TextCount {
 pub struct HistoryRow {
     pub datetime: String,
     pub kind: String,
+    pub formality: String,
     pub source_lang: String,
     pub target_lang: String,
     pub source_text: String,
@@ -103,6 +104,7 @@ pub struct ReportLabels {
     pub keywords: String,
     pub history_date: String,
     pub history_type: String,
+    pub history_formality: String,
     pub history_source_lang: String,
     pub history_target_lang: String,
     pub history_source_text: String,
@@ -270,6 +272,7 @@ fn resolve_report_labels(report_packs: &ReportPacks) -> ReportLabels {
         keywords: fallback("keywords", "Keywords"),
         history_date: fallback("history_date", "Date"),
         history_type: fallback("history_type", "Type"),
+        history_formality: fallback("history_formality", "Formality"),
         history_source_lang: fallback("history_source_lang", "Source"),
         history_target_lang: fallback("history_target_lang", "Target"),
         history_source_text: fallback("history_source_text", "Source text"),
@@ -405,6 +408,7 @@ fn collect_histories(
             HistoryRow {
                 datetime: format_history_datetime(entry.datetime.trim()),
                 kind: history_kind_label(entry, labels),
+                formality: entry.formal.clone().unwrap_or_default(),
                 source_lang,
                 target_lang,
                 source_text: entry.src.clone(),

@@ -28,7 +28,7 @@
   </tags>
   <histories>
     {% for item in report.translated_histories %}
-    <history date="{{ item.datetime | escape }}" type="{{ item.kind | escape }}" source_lang="{{ item.source_lang | escape }}" target_lang="{{ item.target_lang | escape }}">
+    <history date="{{ item.datetime | escape }}" type="{{ item.kind | escape }}" formality="{{ item.formality | escape }}" source_lang="{{ item.source_lang | escape }}" target_lang="{{ item.target_lang | escape }}">
       <source>{{ item.source_text | escape }}</source>
       <target>{{ item.target_text | escape }}</target>
       <tags>

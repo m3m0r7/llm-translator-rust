@@ -41,6 +41,8 @@ impl HistoryType {
 pub struct HistoryEntry {
     pub datetime: String,
     pub model: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub formal: Option<String>,
     pub mime: String,
     #[serde(rename = "type")]
     pub kind: HistoryType,
