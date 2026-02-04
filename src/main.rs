@@ -1,7 +1,7 @@
 use std::io::{self, BufRead, IsTerminal, Read};
 
 use anyhow::{anyhow, Result};
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -70,6 +70,14 @@ struct Cli {
     #[arg(long = "details")]
     details: bool,
 
+    /// Generate a translation report (html|xml|json)
+    #[arg(long = "report", value_enum)]
+    report: Option<ReportFormatArg>,
+
+    /// Report output path (default: ./report.<format>)
+    #[arg(long = "report-out")]
+    report_out: Option<String>,
+
     /// Show translation histories and exit
     #[arg(long = "show-histories")]
     show_histories: bool,
@@ -135,6 +143,23 @@ struct Cli {
     mcp: bool,
 }
 
+#[derive(Debug, Clone, ValueEnum)]
+enum ReportFormatArg {
+    Html,
+    Xml,
+    Json,
+}
+
+impl From<ReportFormatArg> for llm_translator_rust::ReportFormat {
+    fn from(value: ReportFormatArg) -> Self {
+        match value {
+            ReportFormatArg::Html => llm_translator_rust::ReportFormat::Html,
+            ReportFormatArg::Xml => llm_translator_rust::ReportFormat::Xml,
+            ReportFormatArg::Json => llm_translator_rust::ReportFormat::Json,
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     #[cfg(target_os = "macos")]
@@ -159,7 +184,8 @@ async fn main() -> Result<()> {
         || cli.show_enabled_styles
         || cli.show_models_list
         || cli.show_whisper_models
-        || cli.show_histories);
+        || cli.show_histories
+        || cli.report.is_some());
     let stdin_bytes = if needs_input {
         if cli.data.is_some() && io::stdin().is_terminal() {
             None
@@ -241,6 +267,8 @@ async fn main() -> Result<()> {
             pos: cli.pos,
             correction: cli.correction,
             details: cli.details,
+            report_format: cli.report.map(Into::into),
+            report_out: cli.report_out,
             show_histories: cli.show_histories,
             with_using_tokens: cli.with_using_tokens,
             with_using_model: cli.with_using_model,
@@ -289,6 +317,8 @@ impl InteractiveState {
                 pos: cli.pos,
                 correction: cli.correction,
                 details: cli.details,
+                report_format: None,
+                report_out: None,
                 show_histories: false,
                 with_using_tokens: cli.with_using_tokens,
                 with_using_model: cli.with_using_model,
@@ -635,7 +665,7 @@ fn print_interactive_help() {
 
 #[cfg(test)]
 mod tests {
-    use super::Cli;
+    use super::{Cli, ReportFormatArg};
     use clap::Parser;
 
     #[test]
@@ -656,6 +686,8 @@ mod tests {
         assert!(!cli.pos);
         assert!(!cli.correction);
         assert!(!cli.details);
+        assert!(cli.report.is_none());
+        assert!(cli.report_out.is_none());
         assert!(!cli.show_histories);
         assert!(!cli.with_using_tokens);
         assert!(!cli.with_using_model);
@@ -700,6 +732,10 @@ mod tests {
             "--pos",
             "--correction",
             "--details",
+            "--report",
+            "json",
+            "--report-out",
+            "report.json",
             "--show-histories",
             "--with-using-tokens",
             "--with-using-model",
@@ -740,6 +776,8 @@ mod tests {
         assert!(cli.pos);
         assert!(cli.correction);
         assert!(cli.details);
+        assert!(matches!(cli.report, Some(ReportFormatArg::Json)));
+        assert_eq!(cli.report_out.as_deref(), Some("report.json"));
         assert!(cli.show_histories);
         assert!(cli.with_using_tokens);
         assert!(cli.with_using_model);

@@ -44,6 +44,12 @@ pub struct HistoryEntry {
     pub mime: String,
     #[serde(rename = "type")]
     pub kind: HistoryType,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_language: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_language: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
     pub src: String,
     pub dest: String,
 }

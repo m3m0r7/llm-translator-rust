@@ -241,6 +241,19 @@ Correction reasons:
 - `Usage` and example source sentences are in the source language.
 - Examples include the translation or one of the alternatives.
 
+## Report (--report)
+
+`--report` builds a translation report from histories (default limit: 512).
+It aggregates language pairs, content types, models, daily volume, and LLM-based clusters/keywords.
+Output defaults to `./report.<format>` in the current directory.
+
+Usage:
+
+```
+llm-translator-rust --report html
+llm-translator-rust --report json --report-out ./report.json
+```
+
 ## Details (--details)
 
 `--details` generates a detailed translation report for all styles defined in `settings.toml` `[formally]`.
@@ -418,6 +431,8 @@ eng = "英語"
 |  | `--pos` | Dictionary output (part of speech/inflections) |  |
 |  | `--correction` | Proofread input text and point out corrections |  |
 |  | `--details` | Detailed translations across all formal styles |  |
+|  | `--report` | Generate a translation report (html/xml/json) |  |
+|  | `--report-out` | Report output path |  |
 |  | `--show-histories` | Show translation histories |  |
 |  | `--with-using-tokens` | Append token usage to output |  |
 |  | `--with-using-model` | Append model name to output |  |

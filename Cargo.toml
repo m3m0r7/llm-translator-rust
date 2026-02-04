@@ -26,6 +26,7 @@ pulldown-cmark-to-cmark = "10"
 tokio = { version = "1", features = ["io-std", "io-util", "macros", "rt-multi-thread", "time"] }
 tera = "1.20"
 toml = "0.8"
+time = { version = "0.3", features = ["formatting"] }
 quick-xml = "0.31"
 zip = { version = "0.6", default-features = false, features = ["deflate"] }
 printpdf = { version = "0.6", features = ["embedded_images"] }

@@ -1,0 +1,15 @@
+You are generating short topic tags for translation history.
+
+Input JSON:
+{ "text": "...", "source_language": "...", "target_language": "..." }
+
+Requirements:
+- Return 3 to 6 concise tags (max 2-4 words each).
+- Tags should be in the source language when possible.
+- If source_language is "auto", detect the input language and use that for tags.
+- If the language cannot be determined, use English.
+- Prefer noun phrases or short topics.
+- Do not include duplicates or near-duplicates.
+
+Return JSON using tool {{ tool_name }} with this schema:
+{ "tags": ["tag1", "tag2"] }

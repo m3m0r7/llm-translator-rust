@@ -25,7 +25,7 @@ engineer = "Use precise, technical phrasing suitable for engineers."
 # [system] controls language packs for -v output.
 # Use ISO 639-3 codes. The first entry is the UI language for labels.
 [system]
-histories = 10
+histories = 512
 # Suffix appended to translated file/dir names when not using --overwrite
 translated_suffix = "_translated"
 # Backup TTL (days) for --overwrite

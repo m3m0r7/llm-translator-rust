@@ -199,6 +199,8 @@ fn config_from_request(request: &ServerRequest) -> Config {
         pos: false,
         correction: request.correction.unwrap_or(false),
         details: false,
+        report_format: None,
+        report_out: None,
         show_histories: false,
         with_using_tokens: false,
         with_using_model: false,

@@ -35,7 +35,7 @@ impl Default for Settings {
         Self {
             formally: HashMap::new(),
             system_languages: Vec::new(),
-            history_limit: 10,
+            history_limit: 512,
             translated_suffix: "_translated".to_string(),
             backup_ttl_days: 30,
             directory_translation_threads: 3,

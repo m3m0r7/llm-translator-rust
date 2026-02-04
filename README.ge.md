@@ -403,6 +403,8 @@ eng = "英語"
 |  | `--pos` | Wörterbuchausgabe (Wortart/Flexionen) |  |
 |  | `--correction` | Text korrigieren und Hinweise geben |  |
 |  | `--details` | Detailed translations across all formal styles |  |
+|  | `--report` | Generate a translation report (html/xml/json) |  |
+|  | `--report-out` | Report output path |  |
 |  | `--show-histories` | Übersetzungsverläufe anzeigen |  |
 |  | `--with-using-tokens` | Token‑Nutzung anhängen |  |
 |  | `--with-using-model` | Modellnamen anhängen |  |

@@ -405,6 +405,8 @@ eng = "英語"
 |  | `--pos` | Output dizionario (parti del discorso/flessioni) |  |
 |  | `--correction` | Correggi il testo in input e segnala le correzioni |  |
 |  | `--details` | Detailed translations across all formal styles |  |
+|  | `--report` | Generate a translation report (html/xml/json) |  |
+|  | `--report-out` | Report output path |  |
 |  | `--show-histories` | Mostra lo storico delle traduzioni |  |
 |  | `--with-using-tokens` | Aggiungi l'uso dei token all'output |  |
 |  | `--with-using-model` | Aggiungi il nome del modello all'output |  |

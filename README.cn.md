@@ -403,6 +403,8 @@ eng = "英語"
 |  | `--pos` | 词典式输出（词性/活用） |  |
 |  | `--correction` | 校对输入并给出指正 |  |
 |  | `--details` | Detailed translations across all formal styles |  |
+|  | `--report` | Generate a translation report (html/xml/json) |  |
+|  | `--report-out` | Report output path |  |
 |  | `--show-histories` | 显示翻译历史 |  |
 |  | `--with-using-tokens` | 在输出追加 token 使用量 |  |
 |  | `--with-using-model` | 在输出追加模型名 |  |

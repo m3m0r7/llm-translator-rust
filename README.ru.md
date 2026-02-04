@@ -403,6 +403,8 @@ eng = "英語"
 |  | `--pos` | Словарный вывод (части речи/формы) |  |
 |  | `--correction` | Проверка и замечания по тексту |  |
 |  | `--details` | Detailed translations across all formal styles |  |
+|  | `--report` | Generate a translation report (html/xml/json) |  |
+|  | `--report-out` | Report output path |  |
 |  | `--show-histories` | Показать историю переводов |  |
 |  | `--with-using-tokens` | Добавить использование токенов |  |
 |  | `--with-using-model` | Добавить имя модели |  |

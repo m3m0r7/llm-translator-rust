@@ -34,6 +34,8 @@ fn default_config() -> Config {
         pos: false,
         correction: false,
         details: false,
+        report_format: None,
+        report_out: None,
         show_histories: false,
         with_using_tokens: false,
         with_using_model: false,

@@ -245,7 +245,7 @@ async fn tools_call_result(
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 #[serde(default)]
 struct TranslateArgs {
     text: Option<String>,
@@ -255,20 +255,6 @@ struct TranslateArgs {
     slang: Option<bool>,
     model: Option<String>,
     key: Option<String>,
-}
-
-impl Default for TranslateArgs {
-    fn default() -> Self {
-        Self {
-            text: None,
-            lang: None,
-            source_lang: None,
-            formal: None,
-            slang: None,
-            model: None,
-            key: None,
-        }
-    }
 }
 
 impl McpDefaults {
@@ -296,6 +282,8 @@ impl McpDefaults {
             pos: false,
             correction: false,
             details: false,
+            report_format: None,
+            report_out: None,
             show_histories: false,
             with_using_tokens: false,
             with_using_model: false,

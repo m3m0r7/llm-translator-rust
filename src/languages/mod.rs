@@ -38,6 +38,7 @@ impl LanguageRegistry {
 pub struct LanguagePack {
     pub iso_country_lang: HashMap<String, String>,
     pub parts_of_speech: HashMap<String, String>,
+    pub report_labels: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone)]
@@ -73,6 +74,7 @@ fn load_language_pack(code: &str) -> Result<LanguagePack> {
 
     let mut iso_country_lang = HashMap::new();
     let mut parts_of_speech = HashMap::new();
+    let mut report_labels = HashMap::new();
     if let Some(translate) = parsed.translate {
         if let Some(map) = translate.iso_country_lang {
             if let Some(entries) = map.get(&code.to_lowercase()) {
@@ -84,11 +86,17 @@ fn load_language_pack(code: &str) -> Result<LanguagePack> {
                 parts_of_speech.extend(entries.iter().map(|(k, v)| (k.to_string(), v.clone())));
             }
         }
+        if let Some(map) = translate.report_labels {
+            if let Some(entries) = map.get(&code.to_lowercase()) {
+                report_labels.extend(entries.iter().map(|(k, v)| (k.to_string(), v.clone())));
+            }
+        }
     }
 
     Ok(LanguagePack {
         iso_country_lang,
         parts_of_speech,
+        report_labels,
     })
 }
 
@@ -121,4 +129,5 @@ struct LanguagePackFile {
 struct TranslateSection {
     iso_country_lang: Option<HashMap<String, HashMap<String, String>>>,
     parts_of_speech: Option<HashMap<String, HashMap<String, String>>>,
+    report_labels: Option<HashMap<String, HashMap<String, String>>>,
 }

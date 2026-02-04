@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<report generated_at="{{ report.generated_at | escape }}">
+  <totals total="{{ report.totals.total }}" text="{{ report.totals.text }}" attachment="{{ report.totals.attachment }}" />
+  <languages>
+    {% for item in report.languages %}
+    <item label="{{ item.label | escape }}" count="{{ item.count }}" />
+    {% endfor %}
+  </languages>
+  <types>
+    {% for item in report.types %}
+    <item label="{{ item.label | escape }}" count="{{ item.count }}" />
+    {% endfor %}
+  </types>
+  <models>
+    {% for item in report.models %}
+    <item label="{{ item.label | escape }}" count="{{ item.count }}" />
+    {% endfor %}
+  </models>
+  <daily>
+    {% for item in report.daily %}
+    <item label="{{ item.label | escape }}" count="{{ item.count }}" />
+    {% endfor %}
+  </daily>
+  <tags>
+    {% for item in report.tags %}
+    <item label="{{ item.label | escape }}" count="{{ item.count }}" />
+    {% endfor %}
+  </tags>
+  <histories>
+    {% for item in report.translated_histories %}
+    <history date="{{ item.datetime | escape }}" type="{{ item.kind | escape }}" source_lang="{{ item.source_lang | escape }}" target_lang="{{ item.target_lang | escape }}">
+      <source>{{ item.source_text | escape }}</source>
+      <target>{{ item.target_text | escape }}</target>
+      <tags>
+        {% for tag in item.tags %}
+        <tag>{{ tag | escape }}</tag>
+        {% endfor %}
+      </tags>
+    </history>
+    {% endfor %}
+  </histories>
+  <clusters>
+    {% for cluster in report.clusters %}
+    <cluster label="{{ cluster.label | escape }}">
+      {% for item in cluster.items %}
+      <item count="{{ item.count }}">{{ item.text | escape }}</item>
+      {% endfor %}
+    </cluster>
+    {% endfor %}
+  </clusters>
+  <keywords>
+    {% for keyword in report.keywords %}
+    <keyword count="{{ keyword.count }}" pos="{{ keyword.pos | escape }}" translation="{{ keyword.translation | escape }}">{{ keyword.keyword | escape }}</keyword>
+    {% endfor %}
+  </keywords>
+</report>

@@ -15,12 +15,14 @@ pub mod data;
 pub mod details;
 pub mod dictionary;
 pub mod ext;
+mod history_tags;
 pub mod languages;
 pub mod logging;
 pub mod mcp;
 mod model_registry;
 pub mod ocr;
 mod providers;
+pub mod report;
 pub mod server;
 pub mod settings;
 mod translation_ignore;
@@ -59,6 +61,8 @@ pub struct Config {
     pub pos: bool,
     pub correction: bool,
     pub details: bool,
+    pub report_format: Option<ReportFormat>,
+    pub report_out: Option<String>,
     pub show_histories: bool,
     pub with_using_tokens: bool,
     pub with_using_model: bool,
@@ -66,6 +70,23 @@ pub struct Config {
     pub debug_ocr: bool,
     pub verbose: bool,
     pub whisper_model: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReportFormat {
+    Html,
+    Xml,
+    Json,
+}
+
+impl ReportFormat {
+    pub fn extension(self) -> &'static str {
+        match self {
+            ReportFormat::Html => "html",
+            ReportFormat::Xml => "xml",
+            ReportFormat::Json => "json",
+        }
+    }
 }
 
 pub async fn run(config: Config, input: Option<String>) -> Result<String> {
@@ -113,7 +134,33 @@ async fn run_with_loaded_settings(
         return show_histories();
     }
 
-    if config.data.is_none() && config.data_attachment.is_none() && config.data_mime.is_some() {
+    if config.report_out.is_some() && config.report_format.is_none() {
+        return Err(anyhow!("--report-out requires --report"));
+    }
+    let report_requested = config.report_format.is_some();
+    if report_requested {
+        if config.pos || config.correction || config.details {
+            return Err(anyhow!(
+                "--report cannot be used with --pos/--correction/--details"
+            ));
+        }
+        if config.data.is_some()
+            || config.data_attachment.is_some()
+            || config.data_mime.is_some()
+            || config.overwrite
+            || config.out_path.is_some()
+        {
+            return Err(anyhow!(
+                "--report cannot be used with --data/--data-mime/--overwrite/--out"
+            ));
+        }
+    }
+
+    if !report_requested
+        && config.data.is_none()
+        && config.data_attachment.is_none()
+        && config.data_mime.is_some()
+    {
         return Err(anyhow!("--data-mime requires --data or stdin"));
     }
 
@@ -172,7 +219,7 @@ async fn run_with_loaded_settings(
 
     let input = input.unwrap_or_default();
     let input = input.trim();
-    if input.is_empty() && data_attachment.is_none() && !data_is_dir {
+    if !report_requested && input.is_empty() && data_attachment.is_none() && !data_is_dir {
         return Err(anyhow!("stdin is empty"));
     }
     let formality = config.formal.trim().to_string();
@@ -225,6 +272,7 @@ async fn run_with_loaded_settings(
     let provider = providers::build_provider(selection.provider, key, model);
     let translator = Translator::new(provider, settings, registry);
 
+    let report_lang_hint = config.source_lang.clone();
     let options = TranslateOptions {
         lang: config.lang,
         formality,
@@ -243,6 +291,24 @@ async fn run_with_loaded_settings(
     } else {
         input.to_string()
     };
+
+    if let Some(report_format) = config.report_format {
+        let histories = model_registry::get_histories()?;
+        let report = report::build_report(&translator, &histories, Some(&report_lang_hint)).await?;
+        let rendered = report::render_report(&report, report_format)?;
+        let output_path = report::resolve_report_out(report_format, config.report_out.as_deref());
+        if let Some(parent) = output_path.parent() {
+            if !parent.as_os_str().is_empty() {
+                fs::create_dir_all(parent).with_context(|| {
+                    format!("failed to create report directory: {}", parent.display())
+                })?;
+            }
+        }
+        fs::write(&output_path, rendered)
+            .with_context(|| format!("failed to write report: {}", output_path.display()))?;
+        let resolved = std::fs::canonicalize(&output_path).unwrap_or(output_path);
+        return Ok(resolved.to_string_lossy().to_string());
+    }
 
     if config.correction {
         if config.pos {
@@ -442,6 +508,9 @@ async fn run_with_loaded_settings(
                 model: format!("{}:{}", selection.provider.as_str(), history_model),
                 mime: output.mime.clone(),
                 kind: model_registry::HistoryType::Attachment,
+                source_language: normalize_lang_for_history(&options.source_lang),
+                target_language: normalize_lang_for_history(&options.lang),
+                tags: None,
                 src: history_src.clone().unwrap_or_else(|| "stdin".to_string()),
                 dest: dest_path.clone(),
             };
@@ -471,11 +540,31 @@ async fn run_with_loaded_settings(
                 text: user_text,
                 data: data_attachment,
             },
-            options,
+            options.clone(),
         )
         .await?;
 
     let output = format_execution_output(&execution, with_using_model, with_using_tokens);
+
+    let tags = if attachment_mime.is_none() {
+        match history_tags::generate_history_tags(
+            &translator,
+            &input_text,
+            &options.source_lang,
+            &options.lang,
+        )
+        .await
+        {
+            Ok(tags) if !tags.is_empty() => Some(tags),
+            Ok(_) => None,
+            Err(err) => {
+                warn!("failed to generate history tags: {}", err);
+                None
+            }
+        }
+    } else {
+        None
+    };
 
     if let Err(err) = record_history(
         selection.provider,
@@ -485,6 +574,9 @@ async fn run_with_loaded_settings(
         &input_text,
         attachment_mime.as_deref(),
         &execution.text,
+        &options.source_lang,
+        &options.lang,
+        tags,
     ) {
         eprintln!("warning: failed to record history: {}", err);
     }
@@ -934,6 +1026,9 @@ async fn process_dir_file<P: Provider + Clone>(
                 model: format!("{}:{}", shared.provider.as_str(), shared.history_model),
                 mime: output.mime.clone(),
                 kind: model_registry::HistoryType::Attachment,
+                source_language: normalize_lang_for_history(&shared.options.source_lang),
+                target_language: normalize_lang_for_history(&shared.options.lang),
+                tags: None,
                 src: path.to_string_lossy().to_string(),
                 dest: dest_path,
             };
@@ -1077,6 +1172,9 @@ fn record_history(
     input_text: &str,
     attachment_mime: Option<&str>,
     output_text: &str,
+    source_lang: &str,
+    target_lang: &str,
+    tags: Option<Vec<String>>,
 ) -> Result<()> {
     let datetime = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1109,10 +1207,22 @@ fn record_history(
         model: full_model,
         mime,
         kind,
+        source_language: normalize_lang_for_history(source_lang),
+        target_language: normalize_lang_for_history(target_lang),
+        tags,
         src,
         dest,
     };
     model_registry::record_history(entry, history_limit)
+}
+
+fn normalize_lang_for_history(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_lowercase())
+    }
 }
 
 pub(crate) fn resolve_ocr_languages(

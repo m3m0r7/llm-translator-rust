@@ -252,6 +252,19 @@ Correction reasons:
 echo "This is a cat, however we do not eat the cat because the cat is so cute." | llm-translator-rust --details -l ja
 ```
 
+## レポート（--report）
+
+`--report` は翻訳履歴（既定 512 件）からレポートを生成します。
+言語ペア、種類、モデル、日次、LLM によるクラスタ・キーワードを集計します。
+出力先の既定は `./report.<format>` です。
+
+使い方:
+
+```
+llm-translator-rust --report html
+llm-translator-rust --report json --report-out ./report.json
+```
+
 ## 音声翻訳
 
 音声は `whisper-rs` で文字起こし → LLM 翻訳 → TTS で再合成します。
@@ -417,6 +430,8 @@ eng = "英語"
 |  | `--pos` | 品詞・活用などの辞書形式で出力 |  |
 |  | `--correction` | 入力文の校正（指摘）を行う |  |
 |  | `--details` | 詳細翻訳（全スタイル） |  |
+|  | `--report` | 翻訳レポートを生成（html/xml/json） |  |
+|  | `--report-out` | レポートの出力先 |  |
 |  | `--show-histories` | 翻訳履歴を表示 |  |
 |  | `--with-using-tokens` | トークン使用量を付加 |  |
 |  | `--with-using-model` | 使用モデル名を付加 |  |

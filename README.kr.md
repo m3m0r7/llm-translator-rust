@@ -403,6 +403,8 @@ eng = "英語"
 |  | `--pos` | 사전형 출력(POS/활용) |  |
 |  | `--correction` | 교정 결과 출력 |  |
 |  | `--details` | Detailed translations across all formal styles |  |
+|  | `--report` | Generate a translation report (html/xml/json) |  |
+|  | `--report-out` | Report output path |  |
 |  | `--show-histories` | 번역 이력 표시 |  |
 |  | `--with-using-tokens` | 토큰 사용량 추가 |  |
 |  | `--with-using-model` | 모델명 추가 |  |
