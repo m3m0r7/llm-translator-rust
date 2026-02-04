@@ -66,6 +66,13 @@ install:
 	@$(BUILD_TOOL_BIN) install --env-path "$(BUILD_ENV_PATH)" --bin-name "$(BIN_NAME)" --bin-ext "$(BIN_EXT)" --project-dir "$(CURDIR)"
 
 clean:
+	@if [ -f "$(BUILD_ENV_PATH)" ]; then \
+		if [ -f "$(BUILD_TOOL_BIN)" ]; then \
+			"$(BUILD_TOOL_BIN)" clean --env-path "$(BUILD_ENV_PATH)" --project-dir "$(CURDIR)"; \
+		else \
+			cargo run --manifest-path "$(BUILD_TOOL_MANIFEST)" -- clean --env-path "$(BUILD_ENV_PATH)" --project-dir "$(CURDIR)"; \
+		fi; \
+	fi
 	cargo clean
 	@cargo clean --manifest-path "$(BUILD_TOOL_MANIFEST)" || true
 	@rm -f "$(BUILD_ENV_PATH)"

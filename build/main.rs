@@ -18,6 +18,7 @@ struct Cli {
 enum Commands {
     Build(BuildArgs),
     Install(InstallArgs),
+    Clean(CleanArgs),
 }
 
 #[derive(Parser, Debug)]
@@ -90,6 +91,21 @@ struct InstallArgs {
     project_dir: Option<PathBuf>,
 }
 
+#[derive(Parser, Debug)]
+struct CleanArgs {
+    /// Path to read build_env.toml
+    #[arg(
+        long = "env-path",
+        default_value = "build/build_env.toml",
+        alias = "env"
+    )]
+    env_path: PathBuf,
+
+    /// Project root (used for relative paths)
+    #[arg(long)]
+    project_dir: Option<PathBuf>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct BuildEnv {
     #[serde(rename = "dataDirectory", alias = "baseDirectory")]
@@ -122,6 +138,7 @@ fn run() -> Result<()> {
     match cli.command {
         Commands::Build(args) => run_build(args),
         Commands::Install(args) => run_install(args),
+        Commands::Clean(args) => run_clean(args),
     }
 }
 
@@ -219,6 +236,27 @@ fn run_install(args: InstallArgs) -> Result<()> {
             }
             HeaderStatus::Exists(path) => {
                 println!("Headers already exists: {}", path.display());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn run_clean(args: CleanArgs) -> Result<()> {
+    let project_dir = resolve_project_dir(args.project_dir.clone())?;
+    let env_path = resolve_path(&project_dir, &args.env_path);
+    if !env_path.exists() {
+        return Ok(());
+    }
+    let env = read_build_env(&env_path)?;
+    let header_status = remove_header_files(&env, &project_dir)?;
+    if let Some(status) = header_status {
+        match status {
+            HeaderCleanStatus::Removed(path) => {
+                println!("Headers removed from {}", path.display());
+            }
+            HeaderCleanStatus::NotFound(path) => {
+                println!("Headers not found in {}", path.display());
             }
         }
     }
@@ -326,6 +364,11 @@ enum HeaderStatus {
     Exists(PathBuf),
 }
 
+enum HeaderCleanStatus {
+    Removed(PathBuf),
+    NotFound(PathBuf),
+}
+
 fn ensure_settings_file(env: &BuildEnv, project_dir: &Path) -> Result<Option<SettingsStatus>> {
     let Some(settings_path) = resolve_settings_path(env, project_dir) else {
         return Ok(None);
@@ -398,6 +441,54 @@ fn ensure_header_files(env: &BuildEnv, project_dir: &Path) -> Result<Option<Head
         Ok(Some(HeaderStatus::Copied(data_dir)))
     } else {
         Ok(Some(HeaderStatus::Exists(data_dir)))
+    }
+}
+
+fn remove_header_files(env: &BuildEnv, project_dir: &Path) -> Result<Option<HeaderCleanStatus>> {
+    let source_dir = project_dir.join("ext");
+    if !source_dir.exists() {
+        return Ok(None);
+    }
+    let Some(data_dir) = resolve_data_dir(env, project_dir) else {
+        return Ok(None);
+    };
+    let mut removed = false;
+    let mut has_entries = false;
+    for entry in fs::read_dir(&source_dir)
+        .with_context(|| format!("failed to read header directory: {}", source_dir.display()))?
+    {
+        let entry = entry?;
+        if !entry.file_type()?.is_file() {
+            continue;
+        }
+        has_entries = true;
+        let dest = data_dir.join(entry.file_name());
+        if dest.exists() {
+            fs::remove_file(&dest).with_context(|| {
+                format!(
+                    "failed to remove header {} from {}",
+                    entry.path().display(),
+                    dest.display()
+                )
+            })?;
+            removed = true;
+        }
+    }
+    if !has_entries {
+        return Ok(None);
+    }
+    if removed {
+        if let Ok(mut entries) = fs::read_dir(&data_dir) {
+            if entries.next().is_none() {
+                let _ = fs::remove_dir(&data_dir);
+            }
+        }
+        return Ok(Some(HeaderCleanStatus::Removed(data_dir)));
+    }
+    if data_dir.exists() {
+        Ok(Some(HeaderCleanStatus::NotFound(data_dir)))
+    } else {
+        Ok(None)
     }
 }
 
