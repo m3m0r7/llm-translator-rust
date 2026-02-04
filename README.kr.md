@@ -17,6 +17,7 @@ LLM 툴 호출을 사용하는 작은 CLI 번역기이며, 항상 stdin에서 �
 - [Environment variables](#environment-variables)
 - [Options](#options)
 - [Server mode](#server-mode)
+- [MCP mode](#mcp-mode)
 - [FFI (C ABI)](#ffi-c-abi)
 - [Notes](#notes)
 
@@ -401,6 +402,7 @@ eng = "英語"
 |  | `--show-whisper-models` | whisper 모델 목록 표시 |  |
 |  | `--pos` | 사전형 출력(POS/활용) |  |
 |  | `--correction` | 교정 결과 출력 |  |
+|  | `--details` | Detailed translations across all formal styles |  |
 |  | `--show-histories` | 번역 이력 표시 |  |
 |  | `--with-using-tokens` | 토큰 사용량 추가 |  |
 |  | `--with-using-model` | 모델명 추가 |  |
@@ -415,6 +417,7 @@ eng = "英語"
 | `-i` | `--interactive` | 인터랙티브 모드 |  |
 | `-r` | `--read-settings` | 추가 설정 TOML 읽기 |  |
 |  | `--server` | HTTP 서버 시작(`ADDR` 기본: settings 또는 `0.0.0.0:11223`) |  |
+|  | `--mcp` | Start MCP server over stdio |  |
 | `-h` | `--help` | 도움말 |  |
 
 ## Server mode
@@ -513,6 +516,20 @@ tmp_dir = "/tmp/llm-translator-rust"
 ```
 
 `data`가 디렉터리면 `contents`에 여러 항목이 반환됩니다.
+
+## MCP mode
+
+Start the MCP server over stdio:
+
+```bash
+llm-translator-rust --mcp
+```
+
+Tools:
+- `translate`
+- `translate_details`
+- `correction`
+- `pos`
 
 ## FFI (C ABI)
 

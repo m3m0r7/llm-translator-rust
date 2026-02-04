@@ -198,6 +198,7 @@ fn config_from_request(request: &ServerRequest) -> Config {
         show_whisper_models: false,
         pos: false,
         correction: request.correction.unwrap_or(false),
+        details: false,
         show_histories: false,
         with_using_tokens: false,
         with_using_model: false,

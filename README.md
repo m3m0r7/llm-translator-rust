@@ -17,6 +17,7 @@ A small CLI translator that uses LLM tool calls and always reads from stdin.
 - [Environment variables](#environment-variables)
 - [Options](#options)
 - [Server mode](#server-mode)
+- [MCP mode](#mcp-mode)
 - [FFI (C ABI)](#ffi-c-abi)
 - [Notes](#notes)
 
@@ -240,6 +241,18 @@ Correction reasons:
 - `Usage` and example source sentences are in the source language.
 - Examples include the translation or one of the alternatives.
 
+## Details (--details)
+
+`--details` generates a detailed translation report for all styles defined in `settings.toml` `[formally]`.
+Each style block includes the translation, reasoning bullets, and extra example sentences.
+The `--formal` style (if present) is shown first.
+
+Usage:
+
+```
+echo "This is a cat, however we do not eat the cat because the cat is so cute." | llm-translator-rust --details -l ja
+```
+
 ## Audio translation
 
 Audio files are transcribed with `whisper-rs`, translated by the LLM, then re-synthesized.
@@ -404,6 +417,7 @@ eng = "英語"
 |  | `--show-whisper-models` | Show available whisper model names |  |
 |  | `--pos` | Dictionary output (part of speech/inflections) |  |
 |  | `--correction` | Proofread input text and point out corrections |  |
+|  | `--details` | Detailed translations across all formal styles |  |
 |  | `--show-histories` | Show translation histories |  |
 |  | `--with-using-tokens` | Append token usage to output |  |
 |  | `--with-using-model` | Append model name to output |  |
@@ -418,6 +432,7 @@ eng = "英語"
 | `-i` | `--interactive` | Interactive mode |  |
 | `-r` | `--read-settings` | Read extra settings TOML file |  |
 |  | `--server` | Start HTTP server (`ADDR` defaults to settings or `0.0.0.0:11223`) |  |
+|  | `--mcp` | Start MCP server over stdio |  |
 | `-h` | `--help` | Show help |  |
 
 ## Server mode
@@ -500,6 +515,20 @@ Correction response (text):
   ]
 }
 ```
+
+## MCP mode
+
+Start the MCP server over stdio:
+
+```bash
+llm-translator-rust --mcp
+```
+
+Tools:
+- `translate`
+- `translate_details`
+- `correction`
+- `pos`
 
 Response (binary):
 

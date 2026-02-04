@@ -17,6 +17,7 @@
 - [Environment variables](#environment-variables)
 - [Options](#options)
 - [Server mode](#server-mode)
+- [MCP mode](#mcp-mode)
 - [FFI (C ABI)](#ffi-c-abi)
 - [Notes](#notes)
 
@@ -401,6 +402,7 @@ eng = "英語"
 |  | `--show-whisper-models` | Показать доступные модели whisper |  |
 |  | `--pos` | Словарный вывод (части речи/формы) |  |
 |  | `--correction` | Проверка и замечания по тексту |  |
+|  | `--details` | Detailed translations across all formal styles |  |
 |  | `--show-histories` | Показать историю переводов |  |
 |  | `--with-using-tokens` | Добавить использование токенов |  |
 |  | `--with-using-model` | Добавить имя модели |  |
@@ -415,6 +417,7 @@ eng = "英語"
 | `-i` | `--interactive` | Интерактивный режим |  |
 | `-r` | `--read-settings` | Прочитать дополнительный TOML |  |
 |  | `--server` | Запустить HTTP‑сервер (`ADDR` по умолчанию: settings или `0.0.0.0:11223`) |  |
+|  | `--mcp` | Start MCP server over stdio |  |
 | `-h` | `--help` | Справка |  |
 
 ## Server mode
@@ -513,6 +516,20 @@ tmp_dir = "/tmp/llm-translator-rust"
 ```
 
 Если `data` — директория, в `contents` будет несколько записей.
+
+## MCP mode
+
+Start the MCP server over stdio:
+
+```bash
+llm-translator-rust --mcp
+```
+
+Tools:
+- `translate`
+- `translate_details`
+- `correction`
+- `pos`
 
 ## FFI (C ABI)
 

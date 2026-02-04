@@ -17,6 +17,7 @@ Ein kleines CLI‑Übersetzungstool, das LLM‑Tool‑Calls nutzt und immer von 
 - [Environment variables](#environment-variables)
 - [Options](#options)
 - [Server mode](#server-mode)
+- [MCP mode](#mcp-mode)
 - [FFI (C ABI)](#ffi-c-abi)
 - [Notes](#notes)
 
@@ -401,6 +402,7 @@ eng = "英語"
 |  | `--show-whisper-models` | Whisper‑Modelle anzeigen |  |
 |  | `--pos` | Wörterbuchausgabe (Wortart/Flexionen) |  |
 |  | `--correction` | Text korrigieren und Hinweise geben |  |
+|  | `--details` | Detailed translations across all formal styles |  |
 |  | `--show-histories` | Übersetzungsverläufe anzeigen |  |
 |  | `--with-using-tokens` | Token‑Nutzung anhängen |  |
 |  | `--with-using-model` | Modellnamen anhängen |  |
@@ -415,6 +417,7 @@ eng = "英語"
 | `-i` | `--interactive` | Interaktiver Modus |  |
 | `-r` | `--read-settings` | Zusätzliches TOML laden |  |
 |  | `--server` | HTTP‑Server starten (Standard `0.0.0.0:11223`) |  |
+|  | `--mcp` | Start MCP server over stdio |  |
 | `-h` | `--help` | Hilfe |  |
 
 ## Server mode
@@ -513,6 +516,20 @@ Antwort (Binär):
 ```
 
 Wenn `data` ein Verzeichnis ist, gibt `contents` mehrere Einträge zurück.
+
+## MCP mode
+
+Start the MCP server over stdio:
+
+```bash
+llm-translator-rust --mcp
+```
+
+Tools:
+- `translate`
+- `translate_details`
+- `correction`
+- `pos`
 
 ## FFI (C ABI)
 

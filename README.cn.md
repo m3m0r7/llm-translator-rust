@@ -17,6 +17,7 @@
 - [Environment variables](#environment-variables)
 - [Options](#options)
 - [Server mode](#server-mode)
+- [MCP mode](#mcp-mode)
 - [FFI (C ABI)](#ffi-c-abi)
 - [Notes](#notes)
 
@@ -401,6 +402,7 @@ eng = "英語"
 |  | `--show-whisper-models` | 显示 whisper 模型名 |  |
 |  | `--pos` | 词典式输出（词性/活用） |  |
 |  | `--correction` | 校对输入并给出指正 |  |
+|  | `--details` | Detailed translations across all formal styles |  |
 |  | `--show-histories` | 显示翻译历史 |  |
 |  | `--with-using-tokens` | 在输出追加 token 使用量 |  |
 |  | `--with-using-model` | 在输出追加模型名 |  |
@@ -415,6 +417,7 @@ eng = "英語"
 | `-i` | `--interactive` | 交互模式 |  |
 | `-r` | `--read-settings` | 读取额外设置 TOML 文件 |  |
 |  | `--server` | 启动 HTTP 服务器（`ADDR` 默认读取设置或 `0.0.0.0:11223`） |  |
+|  | `--mcp` | Start MCP server over stdio |  |
 | `-h` | `--help` | 帮助 |  |
 
 ## Server mode
@@ -513,6 +516,20 @@ tmp_dir = "/tmp/llm-translator-rust"
 ```
 
 当 `data` 为目录时，`contents` 会包含多条结果。
+
+## MCP mode
+
+Start the MCP server over stdio:
+
+```bash
+llm-translator-rust --mcp
+```
+
+Tools:
+- `translate`
+- `translate_details`
+- `correction`
+- `pos`
 
 ## FFI (C ABI)
 

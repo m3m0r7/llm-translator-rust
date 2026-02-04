@@ -17,6 +17,7 @@ LLM のツール呼び出し (JSON) を使った、stdin 入力専用の翻訳 C
 - [環境変数](#環境変数)
 - [オプション](#オプション)
 - [サーバーモード](#サーバーモード)
+- [MCPモード](#mcpモード)
 - [FFI (C ABI)](#ffi-c-abi)
 - [補足](#補足)
 
@@ -239,6 +240,18 @@ Correction reasons:
 - English requires a/an before a countable noun
 ```
 
+## 詳細翻訳（--details）
+
+`--details` は `settings.toml` の `[formally]` にある全スタイルで詳細翻訳レポートを出力します。
+各スタイルは翻訳文・理由の箇条書き・追加の例文が含まれます。
+`--formal` で指定したスタイルが先頭に並びます。
+
+使い方:
+
+```
+echo "This is a cat, however we do not eat the cat because the cat is so cute." | llm-translator-rust --details -l ja
+```
+
 ## 音声翻訳
 
 音声は `whisper-rs` で文字起こし → LLM 翻訳 → TTS で再合成します。
@@ -403,6 +416,7 @@ eng = "英語"
 |  | `--show-whisper-models` | Whisper モデル名の一覧を表示 |  |
 |  | `--pos` | 品詞・活用などの辞書形式で出力 |  |
 |  | `--correction` | 入力文の校正（指摘）を行う |  |
+|  | `--details` | 詳細翻訳（全スタイル） |  |
 |  | `--show-histories` | 翻訳履歴を表示 |  |
 |  | `--with-using-tokens` | トークン使用量を付加 |  |
 |  | `--with-using-model` | 使用モデル名を付加 |  |
@@ -417,6 +431,7 @@ eng = "英語"
 | `-i` | `--interactive` | インタラクティブモード |  |
 | `-r` | `--read-settings` | 追加の設定 TOML を読み込む |  |
 |  | `--server` | HTTP サーバーを起動（`ADDR` は settings または `0.0.0.0:11223` が既定） |  |
+|  | `--mcp` | MCP サーバーを stdio で起動 |  |
 | `-h` | `--help` | ヘルプ表示 |  |
 
 ## サーバーモード
@@ -515,6 +530,20 @@ tmp_dir = "/tmp/llm-translator-rust"
 ```
 
 `data` がディレクトリの場合は `contents` に複数エントリが入ります。
+
+## MCPモード
+
+stdio で MCP サーバーを起動:
+
+```bash
+llm-translator-rust --mcp
+```
+
+Tools:
+- `translate`
+- `translate_details`
+- `correction`
+- `pos`
 
 ## FFI (C ABI)
 

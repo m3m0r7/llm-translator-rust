@@ -17,6 +17,7 @@ Un petit traducteur CLI qui utilise des appels d’outils LLM et lit toujours de
 - [Environment variables](#environment-variables)
 - [Options](#options)
 - [Server mode](#server-mode)
+- [MCP mode](#mcp-mode)
 - [FFI (C ABI)](#ffi-c-abi)
 - [Notes](#notes)
 
@@ -401,6 +402,7 @@ eng = "英語"
 |  | `--show-whisper-models` | Afficher les modèles whisper disponibles |  |
 |  | `--pos` | Sortie dictionnaire (POS/flexions) |  |
 |  | `--correction` | Corriger le texte et indiquer les corrections |  |
+|  | `--details` | Detailed translations across all formal styles |  |
 |  | `--show-histories` | Afficher l’historique |  |
 |  | `--with-using-tokens` | Ajouter l’usage de tokens |  |
 |  | `--with-using-model` | Ajouter le nom du modèle |  |
@@ -415,6 +417,7 @@ eng = "英語"
 | `-i` | `--interactive` | Mode interactif |  |
 | `-r` | `--read-settings` | Lire un TOML de paramètres supplémentaire |  |
 |  | `--server` | Démarrer le serveur HTTP (`ADDR` par défaut : settings ou `0.0.0.0:11223`) |  |
+|  | `--mcp` | Start MCP server over stdio |  |
 | `-h` | `--help` | Aide |  |
 
 ## Server mode
@@ -513,6 +516,20 @@ Réponse (binaire) :
 ```
 
 Si `data` est un dossier, `contents` contient plusieurs entrées.
+
+## MCP mode
+
+Start the MCP server over stdio:
+
+```bash
+llm-translator-rust --mcp
+```
+
+Tools:
+- `translate`
+- `translate_details`
+- `correction`
+- `pos`
 
 ## FFI (C ABI)
 

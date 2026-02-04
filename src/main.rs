@@ -66,6 +66,10 @@ struct Cli {
     #[arg(long = "correction", alias = "correcton")]
     correction: bool,
 
+    /// Show detailed translations across all formal styles
+    #[arg(long = "details")]
+    details: bool,
+
     /// Show translation histories and exit
     #[arg(long = "show-histories")]
     show_histories: bool,
@@ -125,6 +129,10 @@ struct Cli {
     /// Start HTTP server (default: settings or 0.0.0.0:11223)
     #[arg(long = "server", value_name = "ADDR", num_args = 0..=1, default_missing_value = "__settings__")]
     server: Option<String>,
+
+    /// Start MCP server over stdio
+    #[arg(long = "mcp")]
+    mcp: bool,
 }
 
 #[tokio::main]
@@ -137,6 +145,9 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
     llm_translator_rust::logging::init(cli.verbose)?;
+    if cli.mcp {
+        return run_mcp(cli).await;
+    }
     if cli.server.is_some() {
         return run_server(cli).await;
     }
@@ -229,6 +240,7 @@ async fn main() -> Result<()> {
             show_whisper_models: cli.show_whisper_models,
             pos: cli.pos,
             correction: cli.correction,
+            details: cli.details,
             show_histories: cli.show_histories,
             with_using_tokens: cli.with_using_tokens,
             with_using_model: cli.with_using_model,
@@ -276,6 +288,7 @@ impl InteractiveState {
                 show_whisper_models: false,
                 pos: cli.pos,
                 correction: cli.correction,
+                details: cli.details,
                 show_histories: false,
                 with_using_tokens: cli.with_using_tokens,
                 with_using_model: cli.with_using_model,
@@ -309,6 +322,19 @@ async fn run_server(cli: Cli) -> Result<()> {
     };
     llm_translator_rust::server::run_server(settings, addr).await?;
     Ok(())
+}
+
+async fn run_mcp(cli: Cli) -> Result<()> {
+    let defaults = llm_translator_rust::mcp::McpDefaults {
+        lang: cli.lang,
+        source_lang: cli.source_lang,
+        formal: cli.formal,
+        slang: cli.slang,
+        model: cli.model,
+        key: cli.key,
+        settings_path: cli.read_settings,
+    };
+    llm_translator_rust::mcp::run_mcp(defaults).await
 }
 
 async fn run_interactive(cli: Cli) -> Result<()> {
@@ -629,6 +655,7 @@ mod tests {
         assert!(!cli.show_whisper_models);
         assert!(!cli.pos);
         assert!(!cli.correction);
+        assert!(!cli.details);
         assert!(!cli.show_histories);
         assert!(!cli.with_using_tokens);
         assert!(!cli.with_using_model);
@@ -644,6 +671,7 @@ mod tests {
         assert!(!cli.interactive);
         assert!(cli.whisper_model.is_none());
         assert!(cli.server.is_none());
+        assert!(!cli.mcp);
     }
 
     #[test]
@@ -671,6 +699,7 @@ mod tests {
             "--show-whisper-models",
             "--pos",
             "--correction",
+            "--details",
             "--show-histories",
             "--with-using-tokens",
             "--with-using-model",
@@ -690,6 +719,7 @@ mod tests {
             "outdir",
             "--verbose",
             "-i",
+            "--mcp",
             "--whisper-model",
             "base",
             "--server",
@@ -709,6 +739,7 @@ mod tests {
         assert!(cli.show_whisper_models);
         assert!(cli.pos);
         assert!(cli.correction);
+        assert!(cli.details);
         assert!(cli.show_histories);
         assert!(cli.with_using_tokens);
         assert!(cli.with_using_model);
@@ -724,6 +755,7 @@ mod tests {
         assert_eq!(cli.out.as_deref(), Some("outdir"));
         assert!(cli.verbose);
         assert!(cli.interactive);
+        assert!(cli.mcp);
         assert_eq!(cli.whisper_model.as_deref(), Some("base"));
         assert_eq!(cli.server.as_deref(), Some("127.0.0.1:1234"));
     }

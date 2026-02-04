@@ -12,10 +12,12 @@ mod backup;
 mod build_env;
 pub mod correction;
 pub mod data;
+pub mod details;
 pub mod dictionary;
 pub mod ext;
 pub mod languages;
 pub mod logging;
+pub mod mcp;
 mod model_registry;
 pub mod ocr;
 mod providers;
@@ -56,6 +58,7 @@ pub struct Config {
     pub show_whisper_models: bool,
     pub pos: bool,
     pub correction: bool,
+    pub details: bool,
     pub show_histories: bool,
     pub with_using_tokens: bool,
     pub with_using_model: bool,
@@ -245,6 +248,9 @@ async fn run_with_loaded_settings(
         if config.pos {
             return Err(anyhow!("--correction cannot be used with --pos"));
         }
+        if config.details {
+            return Err(anyhow!("--correction cannot be used with --details"));
+        }
         if data_attachment.is_some() || data_is_dir {
             return Err(anyhow!("--correction only supports text input"));
         }
@@ -264,11 +270,32 @@ async fn run_with_loaded_settings(
     }
 
     if config.pos {
+        if config.details {
+            return Err(anyhow!("--pos cannot be used with --details"));
+        }
         if data_attachment.is_some() || data_is_dir {
             return Err(anyhow!("--pos only supports text input"));
         }
         info!("running dictionary mode");
         let execution = dictionary::exec_pos(&translator, input, &options).await?;
+        return Ok(format_execution_output(
+            &execution,
+            with_using_model,
+            with_using_tokens,
+        ));
+    }
+
+    if config.details {
+        if data_attachment.is_some() || data_is_dir {
+            return Err(anyhow!("--details only supports text input"));
+        }
+        info!("running details mode");
+        let output = details::exec_details(&translator, input, &options).await?;
+        let execution = ExecutionOutput {
+            text: output.result.details,
+            model: output.model,
+            usage: output.usage,
+        };
         return Ok(format_execution_output(
             &execution,
             with_using_model,
