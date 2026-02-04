@@ -567,19 +567,19 @@ async fn run_with_loaded_settings(
         None
     };
 
-    if let Err(err) = record_history(
-        selection.provider,
-        &history_model,
-        history_src.as_deref(),
+    if let Err(err) = record_history(HistoryRecordInput {
+        provider: selection.provider,
+        model: &history_model,
+        src_path: history_src.as_deref(),
         history_limit,
-        &input_text,
-        attachment_mime.as_deref(),
-        &execution.text,
-        &options.source_lang,
-        &options.lang,
-        &options.formality,
+        input_text: &input_text,
+        attachment_mime: attachment_mime.as_deref(),
+        output_text: &execution.text,
+        source_lang: &options.source_lang,
+        target_lang: &options.lang,
+        formal: &options.formality,
         tags,
-    ) {
+    }) {
         eprintln!("warning: failed to record history: {}", err);
     }
 
@@ -1170,30 +1170,33 @@ fn summarize_history_value(value: &str) -> String {
     }
 }
 
-fn record_history(
+struct HistoryRecordInput<'a> {
     provider: ProviderKind,
-    model: &str,
-    src_path: Option<&str>,
+    model: &'a str,
+    src_path: Option<&'a str>,
     history_limit: usize,
-    input_text: &str,
-    attachment_mime: Option<&str>,
-    output_text: &str,
-    source_lang: &str,
-    target_lang: &str,
-    formal: &str,
+    input_text: &'a str,
+    attachment_mime: Option<&'a str>,
+    output_text: &'a str,
+    source_lang: &'a str,
+    target_lang: &'a str,
+    formal: &'a str,
     tags: Option<Vec<String>>,
-) -> Result<()> {
+}
+
+fn record_history(input: HistoryRecordInput<'_>) -> Result<()> {
     let datetime = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
         .to_string();
-    let full_model = format!("{}:{}", provider.as_str(), model);
-    let (kind, mime, src, dest) = if let Some(mime) = attachment_mime {
-        let src = src_path
+    let full_model = format!("{}:{}", input.provider.as_str(), input.model);
+    let (kind, mime, src, dest) = if let Some(mime) = input.attachment_mime {
+        let src = input
+            .src_path
             .map(|value| value.to_string())
             .unwrap_or_else(|| "stdin".to_string());
-        let dest = model_registry::write_history_dest(output_text, &datetime)?;
+        let dest = model_registry::write_history_dest(input.output_text, &datetime)?;
         (
             model_registry::HistoryType::Attachment,
             mime.to_string(),
@@ -1204,24 +1207,24 @@ fn record_history(
         (
             model_registry::HistoryType::Text,
             data::TEXT_MIME.to_string(),
-            input_text.to_string(),
-            output_text.to_string(),
+            input.input_text.to_string(),
+            input.output_text.to_string(),
         )
     };
 
     let entry = model_registry::HistoryEntry {
         datetime,
         model: full_model,
-        formal: normalize_formality_for_history(formal),
+        formal: normalize_formality_for_history(input.formal),
         mime,
         kind,
-        source_language: normalize_lang_for_history(source_lang),
-        target_language: normalize_lang_for_history(target_lang),
-        tags,
+        source_language: normalize_lang_for_history(input.source_lang),
+        target_language: normalize_lang_for_history(input.target_lang),
+        tags: input.tags,
         src,
         dest,
     };
-    model_registry::record_history(entry, history_limit)
+    model_registry::record_history(entry, input.history_limit)
 }
 
 fn normalize_lang_for_history(value: &str) -> Option<String> {
