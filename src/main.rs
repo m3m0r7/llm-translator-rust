@@ -407,6 +407,54 @@ fn normalize_browser_addr(addr: &str) -> String {
     }
 }
 
+fn encode_query_value(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for b in value.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            _ => out.push_str(&format!("%{:02X}", b)),
+        }
+    }
+    out
+}
+
+fn push_query_param(params: &mut Vec<String>, key: &str, value: Option<&str>) {
+    let Some(raw) = value else { return };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+    params.push(format!(
+        "{}={}",
+        encode_query_value(key),
+        encode_query_value(trimmed)
+    ));
+}
+
+fn build_client_query(cli: &Cli) -> String {
+    let mut params = Vec::new();
+    push_query_param(&mut params, "lang", Some(cli.lang.as_str()));
+    push_query_param(&mut params, "source_lang", Some(cli.source_lang.as_str()));
+    push_query_param(&mut params, "formal", Some(cli.formal.as_str()));
+    push_query_param(&mut params, "model", cli.model.as_deref());
+    push_query_param(&mut params, "mime", cli.data_mime.as_deref());
+    if cli.slang {
+        params.push("slang=true".to_string());
+    }
+    if cli.force_translation {
+        params.push("force=true".to_string());
+    }
+    if cli.with_commentout {
+        params.push("commentout=true".to_string());
+    }
+    if cli.source_lang.trim() != "auto" {
+        push_query_param(&mut params, "ui_lang", Some(cli.source_lang.as_str()));
+    }
+    params.join("&")
+}
+
 fn open_browser(url: &str) -> Result<()> {
     let mut cmd = if cfg!(target_os = "macos") {
         let mut cmd = Command::new("open");
@@ -429,6 +477,8 @@ async fn run_server(cli: Cli) -> Result<()> {
     let settings_path = cli.read_settings.as_deref().map(std::path::Path::new);
     let settings = llm_translator_rust::settings::load_settings(settings_path)?;
     let addr = resolve_server_addr(&cli, &settings);
+    let server_url = format!("http://{}", normalize_browser_addr(&addr));
+    println!("Server running at {}", server_url);
     llm_translator_rust::server::run_server(settings, addr).await?;
     Ok(())
 }
@@ -442,7 +492,16 @@ async fn run_server_with_client(cli: Cli) -> Result<()> {
     let client_addr = resolve_client_addr(&cli, &settings);
 
     let api_base = format!("http://{}", normalize_browser_addr(&server_addr));
-    let client_url = format!("http://{}", normalize_browser_addr(&client_addr));
+    let query = build_client_query(&cli);
+    let base_client_url = format!("http://{}", normalize_browser_addr(&client_addr));
+    let client_url = if query.is_empty() {
+        base_client_url.clone()
+    } else {
+        format!("{}?{}", base_client_url, query)
+    };
+
+    println!("Server running at {}", api_base);
+    println!("Client running at {}", client_url);
 
     let open_url = client_url.clone();
     tokio::spawn(async move {

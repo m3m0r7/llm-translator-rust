@@ -55,10 +55,10 @@ pub(crate) fn base_dir() -> PathBuf {
         return dir;
     }
     let raw = build_env().data_directory.trim();
-    if !raw.is_empty() {
-        if let Some(dir) = normalize_dir(raw) {
-            return dir;
-        }
+    if !raw.is_empty()
+        && let Some(dir) = normalize_dir(raw)
+    {
+        return dir;
     }
     default_data_dir()
 }

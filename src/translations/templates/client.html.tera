@@ -1,0 +1,1186 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LLM Translator</title>
+  <style>
+    :root {
+      --bg: #f5f8f5;
+      --panel: #ffffff;
+      --panel-2: #eef4f0;
+      --accent: #2f855a;
+      --accent-2: #2f855a;
+      --text: #1a1f1c;
+      --muted: #4c5850;
+      --border: #d6e1da;
+      --shadow: rgba(17, 24, 39, 0.08);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]):not([data-theme="dark"]) {
+        --bg: #060807;
+        --panel: #0b0f0d;
+        --panel-2: #101613;
+        --accent: #2f7d56;
+        --accent-2: #256745;
+        --text: #d6e4dc;
+        --muted: #7d9086;
+        --border: #1c2a23;
+        --shadow: rgba(0, 0, 0, 0.55);
+      }
+    }
+    :root[data-theme="dark"] {
+      --bg: #060807;
+      --panel: #0b0f0d;
+      --panel-2: #101613;
+      --accent: #2f7d56;
+      --accent-2: #256745;
+      --text: #d6e4dc;
+      --muted: #7d9086;
+      --border: #1c2a23;
+      --shadow: rgba(0, 0, 0, 0.55);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 17px;
+    }
+    header {
+      padding: 24px 32px;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 26px;
+      letter-spacing: 0.02em;
+    }
+    .theme-toggle {
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--text);
+      font-size: 14px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .theme-toggle:hover {
+      transform: none;
+    }
+    main {
+      display: grid;
+      grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+      gap: 20px;
+      padding: 20px 32px 36px;
+      align-items: start;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 8px 20px var(--shadow);
+    }
+    .card h2 {
+      margin: 0 0 12px;
+      font-size: 17px;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .history-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: calc(100vh - 180px);
+      overflow: auto;
+    }
+    .history-actions {
+      margin-bottom: 12px;
+    }
+    .history-actions button {
+      width: 100%;
+    }
+    .history-item {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: var(--panel-2);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.4;
+      cursor: pointer;
+      text-align: left;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 6px;
+      transition: border-color 0.2s ease, transform 0.2s ease;
+    }
+    .history-item:hover {
+      border-color: var(--accent-2);
+      transform: translateY(-1px);
+    }
+    .history-meta {
+      color: var(--muted);
+      font-size: 13px;
+      text-align: left;
+    }
+    .history-title {
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-align: left;
+    }
+    form {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .input-tabs {
+      grid-column: 1 / -1;
+      display: flex;
+      gap: 8px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 6px;
+    }
+    .input-tab {
+      flex: 1;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-size: 14px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .input-tab.active {
+      background: var(--accent);
+      color: #fff;
+    }
+    .input-tab:hover {
+      transform: none;
+    }
+    .tab-panel {
+      grid-column: 1 / -1;
+      display: grid;
+      gap: 12px;
+    }
+    .tab-panel[data-tab-panel="text"] {
+      grid-template-columns: 1fr;
+    }
+    .tab-panel[data-tab-panel="file"] {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .tab-panel.is-hidden {
+      display: none;
+    }
+    label {
+      font-size: 14px;
+      color: var(--muted);
+      display: block;
+      margin-bottom: 6px;
+    }
+    input, select, textarea {
+      width: 100%;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--text);
+      font-size: 15px;
+    }
+    input[type="checkbox"] {
+      width: auto;
+    }
+    input[type="file"] {
+      padding: 6px;
+    }
+    input::placeholder, textarea::placeholder {
+      color: var(--muted);
+    }
+    textarea {
+      min-height: 140px;
+      resize: vertical;
+    }
+    .row {
+      grid-column: 1 / -1;
+    }
+    .model-custom {
+      margin-top: 8px;
+      display: none;
+    }
+    .toggle-row {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+    }
+    .toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      color: var(--muted);
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+    .toggle.is-disabled {
+      opacity: 0.55;
+    }
+    .toggle.is-disabled span {
+      text-decoration: line-through;
+    }
+    .toggle input {
+      margin: 0;
+      flex: 0 0 auto;
+    }
+    .actions {
+      display: flex;
+      gap: 10px;
+      grid-column: 1 / -1;
+      justify-content: flex-start;
+    }
+    button {
+      border: none;
+      padding: 10px 14px;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      font-size: 15px;
+      position: relative;
+    }
+    .button-label {
+      width: 100%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+    button:hover {
+      transform: translateY(-1px);
+    }
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
+      transform: none;
+    }
+    button.secondary {
+      background: var(--panel-2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      font-weight: 500;
+    }
+    .spinner {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.4);
+      border-top-color: #fff;
+      opacity: 0;
+      animation: spin 1s linear infinite;
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%) rotate(0deg);
+    }
+    form.is-loading #translate-button .spinner {
+      opacity: 1;
+    }
+    form.is-loading #translate-button .button-label {
+      opacity: 0;
+    }
+    @keyframes spin {
+      to {
+        transform: translate(-50%, -50%) rotate(360deg);
+      }
+    }
+    .results {
+      margin-top: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .result-item {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      background: var(--panel-2);
+    }
+    .result-item pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 15px;
+    }
+    .result-item img {
+      max-width: 100%;
+      border-radius: 8px;
+    }
+    .error {
+      color: #b91c1c;
+      font-size: 13px;
+      margin-top: 8px;
+    }
+    @media (max-width: 960px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+      .history-list {
+        max-height: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1 data-label="app_title">LLM Translator</h1>
+    <button type="button" id="theme-toggle" class="theme-toggle"></button>
+  </header>
+  <main>
+    <section class="card">
+      <h2 data-label="histories">Histories</h2>
+      <div class="history-actions">
+        <button type="button" id="new-translation" class="secondary" data-label="new_translation">
+          + New translation
+        </button>
+      </div>
+      <div id="histories" class="history-list"></div>
+    </section>
+    <section class="card">
+      <h2 data-label="translate">Translate</h2>
+      <form id="translate-form">
+        <div>
+          <label for="source-lang" data-label="source_language">Source language</label>
+          <select id="source-lang"></select>
+        </div>
+        <div>
+          <label for="target-lang" data-label="target_language">Target language</label>
+          <select id="target-lang"></select>
+        </div>
+        <div>
+          <label for="formal" data-label="formality">Formality</label>
+          <select id="formal"></select>
+        </div>
+        <div>
+          <label for="model" data-label="model">Model</label>
+          <select id="model"></select>
+          <input
+            id="model-custom"
+            class="model-custom"
+            data-label-placeholder="model_placeholder"
+            placeholder="Custom model"
+          />
+        </div>
+        <div class="input-tabs" role="tablist">
+          <button type="button" class="input-tab active" data-tab="text" data-label="tab_text">
+            Text
+          </button>
+          <button type="button" class="input-tab" data-tab="file" data-label="tab_file">
+            File
+          </button>
+        </div>
+        <div class="tab-panel" data-tab-panel="text">
+          <div>
+            <label for="text" data-label="text">Text</label>
+            <textarea
+              id="text"
+              data-label-placeholder="text_placeholder"
+              placeholder="Enter text to translate..."
+            ></textarea>
+          </div>
+        </div>
+        <div class="tab-panel is-hidden" data-tab-panel="file">
+          <div>
+            <label for="file" data-label="file">File</label>
+            <input id="file" type="file" />
+          </div>
+          <div>
+            <label for="mime" data-label="mime_override">Mime override</label>
+            <select id="mime"></select>
+          </div>
+        </div>
+        <div class="toggle-row">
+          <label class="toggle">
+            <input id="slang" type="checkbox" />
+            <span data-label="enable_slang">Enable slang</span>
+          </label>
+          <label class="toggle">
+            <input id="force" type="checkbox" />
+            <span data-label="force_translation">Force translation</span>
+          </label>
+          <label class="toggle">
+            <input id="commentout" type="checkbox" />
+            <span data-label="translate_comments">Translate comments</span>
+          </label>
+        </div>
+        <div class="actions">
+          <button type="submit" id="translate-button">
+            <span class="button-label" data-label="button_translate">Translate</span>
+            <span class="spinner" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="secondary" id="clear" data-label="button_clear">
+            Clear
+          </button>
+        </div>
+        <div id="error" class="error"></div>
+      </form>
+      <div class="results" id="results"></div>
+    </section>
+  </main>
+  <script>
+    const API_BASE = {{ api_base_json | safe }};
+{% raw %}
+    const DEFAULT_LABELS = {
+      app_title: 'LLM Translator',
+      histories: 'Histories',
+      translate: 'Translate',
+      source_language: 'Source language',
+      target_language: 'Target language',
+      formality: 'Formality',
+      model: 'Model',
+      model_default: 'Default',
+      model_custom: 'Custom...',
+      model_placeholder: 'Custom model',
+      tab_text: 'Text',
+      tab_file: 'File',
+      language_auto: 'Auto',
+      text: 'Text',
+      text_placeholder: 'Enter text to translate...',
+      file: 'File',
+      mime_override: 'Mime override',
+      mime_auto: 'Auto',
+      enable_slang: 'Enable slang',
+      force_translation: 'Force translation',
+      translate_comments: 'Translate comments',
+      button_translate: 'Translate',
+      button_clear: 'Clear',
+      new_translation: '+ New translation',
+      theme_dark: 'Dark mode',
+      theme_light: 'Light mode',
+      error_text_empty: 'Text is empty.',
+      error_file_empty: 'File is required.',
+      no_histories: 'No histories yet.',
+      history_failed: 'Failed to load histories',
+      history_empty: '(empty)',
+      history_minutes_ago: '{count} min ago',
+      history_hours_ago: '{count} hours ago',
+      result: 'Result'
+    };
+
+    let labels = { ...DEFAULT_LABELS };
+
+    const historiesEl = document.getElementById('histories');
+    const form = document.getElementById('translate-form');
+    const resultsEl = document.getElementById('results');
+    const errorEl = document.getElementById('error');
+    const fileEl = document.getElementById('file');
+    const textEl = document.getElementById('text');
+    const modelSelectEl = document.getElementById('model');
+    const modelCustomEl = document.getElementById('model-custom');
+    const mimeSelectEl = document.getElementById('mime');
+    const sourceSelectEl = document.getElementById('source-lang');
+    const targetSelectEl = document.getElementById('target-lang');
+    const formalSelectEl = document.getElementById('formal');
+    const themeToggleEl = document.getElementById('theme-toggle');
+    const newTranslationEl = document.getElementById('new-translation');
+    const tabButtons = Array.from(document.querySelectorAll('.input-tab'));
+    const tabPanels = Array.from(document.querySelectorAll('.tab-panel'));
+
+    const initial = readInitialParams();
+    const uiLang = resolveUiLang(initial);
+
+    async function fetchJson(path, options) {
+      const res = await fetch(`${API_BASE}${path}`, options);
+      const text = await res.text();
+      let data = null;
+      try { data = text ? JSON.parse(text) : null; } catch (_) { data = text; }
+      if (!res.ok) {
+        const message = data && data.error ? data.error : res.statusText;
+        throw new Error(message);
+      }
+      return data;
+    }
+
+    function parseBool(value) {
+      if (value === null || value === undefined) return null;
+      const normalized = String(value).trim().toLowerCase();
+      if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+      if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+      return null;
+    }
+
+    function readInitialParams() {
+      const params = new URLSearchParams(window.location.search);
+      return {
+        lang: params.get('lang'),
+        source_lang: params.get('source_lang') || params.get('source'),
+        formal: params.get('formal'),
+        model: params.get('model'),
+        mime: params.get('mime'),
+        text: params.get('text'),
+        slang: parseBool(params.get('slang')),
+        force: parseBool(params.get('force') || params.get('force_translation')),
+        commentout: parseBool(params.get('commentout') || params.get('with_commentout')),
+        ui_lang: params.get('ui_lang')
+      };
+    }
+
+    function resolveUiLang(params) {
+      if (params && params.ui_lang) return params.ui_lang;
+      if (params && params.source_lang && params.source_lang !== 'auto') return params.source_lang;
+      return 'eng';
+    }
+
+    function applyLabels(newLabels) {
+      labels = { ...DEFAULT_LABELS, ...(newLabels || {}) };
+      document.querySelectorAll('[data-label]').forEach((el) => {
+        const key = el.dataset.label;
+        if (labels[key]) {
+          el.textContent = labels[key];
+        }
+      });
+      document.querySelectorAll('[data-label-placeholder]').forEach((el) => {
+        const key = el.dataset.labelPlaceholder;
+        if (labels[key]) {
+          el.placeholder = labels[key];
+        }
+      });
+      if (labels.app_title) {
+        document.title = labels.app_title;
+      }
+      updateThemeToggle(resolveEffectiveTheme(getStoredTheme()));
+    }
+
+    const THEME_KEY = 'llm-translator-theme';
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
+
+    function getStoredTheme() {
+      return localStorage.getItem(THEME_KEY) || 'system';
+    }
+
+    function resolveEffectiveTheme(stored) {
+      if (stored === 'dark' || stored === 'light') {
+        return stored;
+      }
+      return prefersDark.matches ? 'dark' : 'light';
+    }
+
+    function applyTheme(stored) {
+      if (stored === 'dark' || stored === 'light') {
+        document.documentElement.setAttribute('data-theme', stored);
+      } else {
+        document.documentElement.removeAttribute('data-theme');
+      }
+      updateThemeToggle(resolveEffectiveTheme(stored));
+    }
+
+    function updateThemeToggle(effective) {
+      if (!themeToggleEl) return;
+      const label =
+        effective === 'dark'
+          ? labels.theme_light || 'Light mode'
+          : labels.theme_dark || 'Dark mode';
+      themeToggleEl.textContent = label;
+    }
+
+    function toggleTheme() {
+      const stored = getStoredTheme();
+      const effective = resolveEffectiveTheme(stored);
+      const next = effective === 'dark' ? 'light' : 'dark';
+      localStorage.setItem(THEME_KEY, next);
+      applyTheme(next);
+    }
+
+    function formatCount(template, count, fallback) {
+      if (template && template.includes('{count}')) {
+        return template.replace('{count}', count);
+      }
+      return `${count} ${fallback}`;
+    }
+
+    function formatHistoryDate(value) {
+      const num = Number(value);
+      if (!Number.isFinite(num)) return value;
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      const diff = Math.max(0, nowSeconds - Math.floor(num));
+      if (diff < 60 * 60) {
+        const minutes = Math.max(1, Math.floor(diff / 60));
+        return formatCount(labels.history_minutes_ago, minutes, 'min ago');
+      }
+      if (diff < 60 * 60 * 24) {
+        const hours = Math.max(1, Math.floor(diff / 3600));
+        return formatCount(labels.history_hours_ago, hours, 'hours ago');
+      }
+      const date = new Date(num * 1000);
+      const yyyy = date.getFullYear();
+      const mm = String(date.getMonth() + 1).padStart(2, '0');
+      const dd = String(date.getDate()).padStart(2, '0');
+      const hh = String(date.getHours()).padStart(2, '0');
+      const min = String(date.getMinutes()).padStart(2, '0');
+      return `${yyyy}/${mm}/${dd} ${hh}:${min}`;
+    }
+
+    function truncate(value, maxLength) {
+      if (!value) return '';
+      if (value.length <= maxLength) return value;
+      return value.slice(0, Math.max(0, maxLength - 1)) + '…';
+    }
+
+    function historyTitle(item) {
+      const raw = (item && item.src ? item.src : '').trim();
+      if (!raw) return labels.history_empty || '(empty)';
+      if (item && item.type === 'attachment') {
+        const parts = raw.split(/[/\\]/);
+        return parts[parts.length - 1] || raw;
+      }
+      return raw.replace(/\s+/g, ' ');
+    }
+
+    function renderHistories(items) {
+      historiesEl.innerHTML = '';
+      if (!items || items.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'history-item';
+        empty.textContent = labels.no_histories;
+        historiesEl.appendChild(empty);
+        return;
+      }
+      items.forEach((item) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'history-item';
+
+        const meta = document.createElement('div');
+        meta.className = 'history-meta';
+        meta.textContent = formatHistoryDate(item.datetime);
+
+        const title = document.createElement('div');
+        title.className = 'history-title';
+        const fullTitle = historyTitle(item);
+        title.textContent = truncate(fullTitle, 28);
+        title.title = fullTitle;
+
+        button.appendChild(meta);
+        button.appendChild(title);
+        button.addEventListener('click', () => applyHistory(item));
+        historiesEl.appendChild(button);
+      });
+    }
+
+    async function loadHistories() {
+      try {
+        const data = await fetchJson('/histories');
+        renderHistories(data);
+      } catch (err) {
+        historiesEl.innerHTML = '';
+        const fail = document.createElement('div');
+        fail.className = 'history-item';
+        fail.textContent = `${labels.history_failed}: ${err.message}`;
+        historiesEl.appendChild(fail);
+      }
+    }
+
+    let activeTab = 'text';
+
+    function setActiveTab(tab) {
+      activeTab = tab === 'file' ? 'file' : 'text';
+      tabButtons.forEach((button) => {
+        const isActive = button.dataset.tab === activeTab;
+        button.classList.toggle('active', isActive);
+        button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      });
+      tabPanels.forEach((panel) => {
+        const isActive = panel.dataset.tabPanel === activeTab;
+        panel.classList.toggle('is-hidden', !isActive);
+      });
+      const forceEl = document.getElementById('force');
+      const commentEl = document.getElementById('commentout');
+      const slangEl = document.getElementById('slang');
+      const enableForFile = activeTab === 'file';
+      if (forceEl) forceEl.disabled = !enableForFile;
+      if (commentEl) commentEl.disabled = !enableForFile;
+      if (slangEl) slangEl.disabled = false;
+      const forceLabel = forceEl ? forceEl.closest('.toggle') : null;
+      const commentLabel = commentEl ? commentEl.closest('.toggle') : null;
+      if (forceLabel) forceLabel.classList.toggle('is-disabled', !enableForFile);
+      if (commentLabel) commentLabel.classList.toggle('is-disabled', !enableForFile);
+    }
+
+    function populateSelect(select, values, defaultValue) {
+      const options = (values || [])
+        .map((value) => {
+          if (typeof value === 'string') {
+            return { value, label: value };
+          }
+          if (value && typeof value === 'object') {
+            return {
+              value: value.value ?? value.code ?? '',
+              label: value.label ?? value.value ?? ''
+            };
+          }
+          return null;
+        })
+        .filter((value) => value && value.value);
+      select.innerHTML = '';
+      options.forEach((option) => {
+        const opt = document.createElement('option');
+        opt.value = option.value;
+        if (option.value !== 'auto') {
+          opt.textContent = `${option.label || option.value} (${option.value})`;
+        } else {
+          opt.textContent = option.label || option.value;
+        }
+        if (option.value === defaultValue) opt.selected = true;
+        select.appendChild(opt);
+      });
+    }
+
+    function setSelectValue(select, value) {
+      if (!value) return;
+      const exists = Array.from(select.options).some(opt => opt.value === value);
+      if (!exists) {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = value;
+        select.appendChild(opt);
+      }
+      select.value = value;
+    }
+
+    function populateModelSelect(models, selectedValue) {
+      modelSelectEl.innerHTML = '';
+      const defaultOpt = document.createElement('option');
+      defaultOpt.value = '';
+      defaultOpt.textContent = labels.model_default || 'Default';
+      modelSelectEl.appendChild(defaultOpt);
+
+      (models || []).forEach(model => {
+        const opt = document.createElement('option');
+        opt.value = model;
+        opt.textContent = model;
+        modelSelectEl.appendChild(opt);
+      });
+
+      const customOpt = document.createElement('option');
+      customOpt.value = '__custom__';
+      customOpt.textContent = labels.model_custom || 'Custom...';
+      modelSelectEl.appendChild(customOpt);
+
+      setModelValue(selectedValue || '');
+    }
+
+    function setModelValue(value) {
+      const models = Array.from(modelSelectEl.options).map(opt => opt.value);
+      if (value && models.includes(value)) {
+        modelSelectEl.value = value;
+        modelCustomEl.style.display = 'none';
+        modelCustomEl.value = '';
+        return;
+      }
+      if (value) {
+        modelSelectEl.value = '__custom__';
+        modelCustomEl.style.display = 'block';
+        modelCustomEl.value = value;
+        return;
+      }
+      modelSelectEl.value = '';
+      modelCustomEl.style.display = 'none';
+      modelCustomEl.value = '';
+    }
+
+    function populateMimeSelect(selectedValue) {
+      const options = [
+        { value: 'auto', label: labels.mime_auto || 'Auto' },
+        { value: 'text/plain', label: 'text/plain' },
+        { value: 'text/markdown', label: 'text/markdown' },
+        { value: 'text/html', label: 'text/html' },
+        { value: 'application/json', label: 'application/json' },
+        { value: 'text/yaml', label: 'text/yaml' },
+        { value: 'application/x-yaml', label: 'application/x-yaml' },
+        { value: 'text/xml', label: 'text/xml' },
+        { value: 'application/xml', label: 'application/xml' },
+        { value: 'application/pdf', label: 'application/pdf' },
+        { value: 'image/*', label: 'image/*' },
+        { value: 'audio/*', label: 'audio/*' },
+        { value: 'video/*', label: 'video/*' }
+      ];
+      mimeSelectEl.innerHTML = '';
+      options.forEach(item => {
+        const opt = document.createElement('option');
+        opt.value = item.value;
+        opt.textContent = item.label;
+        mimeSelectEl.appendChild(opt);
+      });
+      setSelectValue(mimeSelectEl, selectedValue || 'auto');
+    }
+
+    function applyInitialValues(data) {
+      const preferredModel = initial.model || data.last_model || '';
+      if (initial.source_lang) {
+        setSelectValue(sourceSelectEl, initial.source_lang);
+      }
+      if (initial.lang) {
+        setSelectValue(targetSelectEl, initial.lang);
+      }
+      if (initial.formal) {
+        setSelectValue(formalSelectEl, initial.formal);
+      }
+      if (initial.slang !== null) {
+        document.getElementById('slang').checked = initial.slang;
+      }
+      if (initial.force !== null) {
+        document.getElementById('force').checked = initial.force;
+      }
+      if (initial.commentout !== null) {
+        document.getElementById('commentout').checked = initial.commentout;
+      }
+      if (initial.text) {
+        textEl.value = initial.text;
+      }
+      setModelValue(preferredModel);
+      populateMimeSelect(initial.mime || 'auto');
+      setActiveTab('text');
+    }
+
+    async function loadSettings(lang) {
+      const data = await fetchJson(`/settings?ui_lang=${encodeURIComponent(lang)}`);
+      applyLabels(data.labels);
+
+      const languages = data.languages || [];
+      const sourceValues = [
+        { value: 'auto', label: labels.language_auto || 'Auto' },
+        ...languages
+      ];
+      populateSelect(sourceSelectEl, sourceValues, data.default_source_lang || 'auto');
+      populateSelect(targetSelectEl, languages.length ? languages : ['en'], data.default_lang || 'en');
+      populateSelect(formalSelectEl, data.formal_keys || ['formal'], data.default_formal || 'formal');
+
+      populateModelSelect(data.models || [], initial.model || data.last_model || '');
+      applyInitialValues(data);
+
+      sourceSelectEl.addEventListener('change', () => {
+        const nextLang = resolveUiLang({ source_lang: sourceSelectEl.value });
+        refreshLabels(nextLang);
+      });
+    }
+
+    async function refreshLabels(lang) {
+      try {
+        const data = await fetchJson(`/settings?ui_lang=${encodeURIComponent(lang)}`);
+        applyLabels(data.labels);
+        const languages = data.languages || [];
+        const sourceValues = [
+          { value: 'auto', label: labels.language_auto || 'Auto' },
+          ...languages
+        ];
+        populateSelect(
+          sourceSelectEl,
+          sourceValues,
+          sourceSelectEl.value || data.default_source_lang || 'auto'
+        );
+        populateSelect(
+          targetSelectEl,
+          languages.length ? languages : ['en'],
+          targetSelectEl.value || data.default_lang || 'en'
+        );
+        populateSelect(
+          formalSelectEl,
+          data.formal_keys || ['formal'],
+          formalSelectEl.value || data.default_formal || 'formal'
+        );
+        const currentModel =
+          modelSelectEl.value === '__custom__' ? modelCustomEl.value : modelSelectEl.value;
+        populateModelSelect(data.models || [], currentModel || '');
+        populateMimeSelect(mimeSelectEl.value || 'auto');
+        loadHistories();
+      } catch (_) {
+        // ignore label updates
+      }
+    }
+
+    function showError(message) {
+      errorEl.textContent = message || '';
+    }
+
+    function setLoading(isLoading) {
+      form.classList.toggle('is-loading', isLoading);
+      const controls = form.querySelectorAll('input, select, textarea, button');
+      controls.forEach((el) => {
+        el.disabled = isLoading;
+      });
+      if (newTranslationEl) {
+        newTranslationEl.disabled = isLoading;
+      }
+    }
+
+    function resetForm() {
+      textEl.value = '';
+      fileEl.value = '';
+      populateMimeSelect('auto');
+      resultsEl.innerHTML = '';
+      showError('');
+      setActiveTab('text');
+    }
+
+    function renderResults(contents) {
+      resultsEl.innerHTML = '';
+      if (!contents || contents.length === 0) return;
+      contents.forEach((content, idx) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'result-item';
+        const title = document.createElement('div');
+        title.style.marginBottom = '8px';
+        title.style.fontWeight = '600';
+        title.textContent = `${labels.result} ${idx + 1} (${content.mime})`;
+        wrapper.appendChild(title);
+
+        if (content.format === 'raw') {
+          const pre = document.createElement('pre');
+          pre.textContent = content.translated || '';
+          wrapper.appendChild(pre);
+        } else if (content.format === 'base64') {
+          const dataUrl = `data:${content.mime};base64,${content.translated}`;
+          if (content.mime.startsWith('image/')) {
+            const img = document.createElement('img');
+            img.src = dataUrl;
+            wrapper.appendChild(img);
+          } else if (content.mime.startsWith('audio/')) {
+            const audio = document.createElement('audio');
+            audio.controls = true;
+            audio.src = dataUrl;
+            wrapper.appendChild(audio);
+          } else if (content.mime.startsWith('video/')) {
+            const video = document.createElement('video');
+            video.controls = true;
+            video.src = dataUrl;
+            wrapper.appendChild(video);
+          } else {
+            const link = document.createElement('a');
+            link.href = dataUrl;
+            link.download = `translated-${idx + 1}`;
+            link.textContent = 'Download translated file';
+            wrapper.appendChild(link);
+          }
+        } else {
+          const pre = document.createElement('pre');
+          pre.textContent = content.translated || '';
+          wrapper.appendChild(pre);
+        }
+        resultsEl.appendChild(wrapper);
+      });
+    }
+
+    async function readFileAsDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function applyHistory(item) {
+      if (!item) return;
+      if (item.source_language) {
+        setSelectValue(sourceSelectEl, item.source_language);
+      }
+      if (item.target_language) {
+        setSelectValue(targetSelectEl, item.target_language);
+      }
+      if (item.formal) {
+        setSelectValue(formalSelectEl, item.formal);
+      }
+      if (item.model) {
+        setModelValue(item.model);
+      }
+      if (item.type === 'attachment') {
+        setActiveTab('file');
+        fileEl.value = '';
+        if (item.mime) {
+          setSelectValue(mimeSelectEl, item.mime);
+        }
+        textEl.value = '';
+        loadHistoryAttachment(item);
+      } else {
+        setActiveTab('text');
+        if (item.src) {
+          textEl.value = item.src;
+        }
+        renderHistoryResult(item);
+      }
+    }
+
+    function renderHistoryResult(item) {
+      if (!item) return;
+      const mime = item.mime || 'text/plain';
+      const translated = item.dest || '';
+      renderResults([
+        {
+          format: 'raw',
+          mime,
+          translated
+        }
+      ]);
+    }
+
+    async function loadHistoryAttachment(item) {
+      if (!item || !item.dest) return;
+      setLoading(true);
+      try {
+        const params = new URLSearchParams({ path: item.dest });
+        const data = await fetchJson(`/history-content?${params.toString()}`);
+        renderResults([
+          {
+            format: 'base64',
+            mime: data.mime || item.mime || 'application/octet-stream',
+            translated: data.data_base64 || ''
+          }
+        ]);
+      } catch (err) {
+        showError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    modelSelectEl.addEventListener('change', () => {
+      if (modelSelectEl.value === '__custom__') {
+        modelCustomEl.style.display = 'block';
+        modelCustomEl.focus();
+      } else {
+        modelCustomEl.style.display = 'none';
+        modelCustomEl.value = '';
+      }
+    });
+
+    tabButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        setActiveTab(button.dataset.tab);
+      });
+    });
+
+    if (themeToggleEl) {
+      themeToggleEl.addEventListener('click', toggleTheme);
+    }
+    prefersDark.addEventListener('change', () => {
+      if (getStoredTheme() === 'system') {
+        applyTheme('system');
+      }
+    });
+    applyTheme(getStoredTheme());
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      showError('');
+      resultsEl.innerHTML = '';
+
+      let modelValue = modelSelectEl.value;
+      if (modelValue === '__custom__') {
+        modelValue = modelCustomEl.value.trim();
+      }
+
+      const payload = {
+        lang: targetSelectEl.value,
+        source_lang: sourceSelectEl.value,
+        formal: formalSelectEl.value,
+        model: modelValue || null,
+        slang: document.getElementById('slang').checked,
+        force_translation: document.getElementById('force').checked,
+        with_commentout: document.getElementById('commentout').checked,
+        response_format: 'base64'
+      };
+
+      if (activeTab === 'file') {
+        const file = fileEl.files[0];
+        if (!file) {
+          showError(labels.error_file_empty || 'File is required.');
+          return;
+        }
+        setLoading(true);
+        try {
+          const dataUrl = await readFileAsDataUrl(file);
+          payload.data_base64 = dataUrl;
+          payload.data_name = file.name;
+          const overrideMime = mimeSelectEl.value.trim();
+          if (overrideMime && overrideMime !== 'auto') {
+            payload.data_mime = overrideMime;
+          } else {
+            payload.data_mime = file.type || 'auto';
+          }
+          const data = await fetchJson('/translate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          renderResults(data.contents || []);
+          await loadHistories();
+        } catch (err) {
+          showError(err.message);
+        } finally {
+          setLoading(false);
+        }
+      } else {
+        const text = textEl.value.trim();
+        if (!text) {
+          showError(labels.error_text_empty || 'Text is empty.');
+          return;
+        }
+        payload.text = text;
+        setLoading(true);
+        try {
+          const data = await fetchJson('/translate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          renderResults(data.contents || []);
+          await loadHistories();
+        } catch (err) {
+          showError(err.message);
+        } finally {
+          setLoading(false);
+        }
+      }
+    });
+
+    document.getElementById('clear').addEventListener('click', () => {
+      resetForm();
+    });
+
+    if (newTranslationEl) {
+      newTranslationEl.addEventListener('click', () => {
+        resetForm();
+      });
+    }
+
+    setActiveTab('text');
+    loadSettings(uiLang).then(loadHistories);
+{% endraw %}
+  </script>
+</body>
+</html>

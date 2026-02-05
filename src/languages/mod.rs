@@ -39,6 +39,7 @@ pub struct LanguagePack {
     pub iso_country_lang: HashMap<String, String>,
     pub parts_of_speech: HashMap<String, String>,
     pub report_labels: HashMap<String, String>,
+    pub client_labels: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone)]
@@ -75,6 +76,7 @@ fn load_language_pack(code: &str) -> Result<LanguagePack> {
     let mut iso_country_lang = HashMap::new();
     let mut parts_of_speech = HashMap::new();
     let mut report_labels = HashMap::new();
+    let mut client_labels = HashMap::new();
     if let Some(translate) = parsed.translate {
         if let Some(map) = translate.iso_country_lang
             && let Some(entries) = map.get(&code.to_lowercase())
@@ -91,13 +93,113 @@ fn load_language_pack(code: &str) -> Result<LanguagePack> {
         {
             report_labels.extend(entries.iter().map(|(k, v)| (k.to_string(), v.clone())));
         }
+        if let Some(map) = translate.client_labels
+            && let Some(entries) = map.get(&code.to_lowercase())
+        {
+            client_labels.extend(entries.iter().map(|(k, v)| (k.to_string(), v.clone())));
+        }
     }
 
     Ok(LanguagePack {
         iso_country_lang,
         parts_of_speech,
         report_labels,
+        client_labels,
     })
+}
+
+pub fn load_client_labels(code: &str) -> HashMap<String, String> {
+    let mut labels = HashMap::new();
+    if let Ok(english) = load_language_pack("eng") {
+        labels.extend(english.client_labels);
+    }
+    if let Some(pack) = normalize_pack_code(code)
+        && let Ok(selected) = load_language_pack(&pack)
+    {
+        labels.extend(selected.client_labels);
+    }
+    labels
+}
+
+pub fn language_autonym(code: &str) -> Option<String> {
+    let trimmed = code.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let lower = trimmed.to_lowercase();
+    let pack_code = normalize_pack_code(&lower).unwrap_or_else(|| lower.clone());
+    let pack = load_language_pack(&pack_code).ok()?;
+    if let Some(label) = pack.iso_country_lang.get(&lower) {
+        return Some(label.clone());
+    }
+    if let Some(label) = pack.iso_country_lang.get(&pack_code) {
+        return Some(label.clone());
+    }
+    None
+}
+
+pub fn normalize_pack_code(code: &str) -> Option<String> {
+    let code = code.trim().to_lowercase();
+    if code.is_empty() {
+        return None;
+    }
+    if code.len() == 3 {
+        return Some(code);
+    }
+    let mapped = match code.as_str() {
+        "ja" => "jpn",
+        "en" => "eng",
+        "zh" => "zho",
+        "ko" => "kor",
+        "fr" => "fra",
+        "de" => "deu",
+        "es" => "spa",
+        "it" => "ita",
+        "pt" => "por",
+        "ru" => "rus",
+        "nl" => "nld",
+        "sv" => "swe",
+        "no" => "nor",
+        "da" => "dan",
+        "fi" => "fin",
+        "el" => "ell",
+        "he" => "heb",
+        "tr" => "tur",
+        "uk" => "ukr",
+        "pl" => "pol",
+        "cs" => "ces",
+        "hu" => "hun",
+        "ro" => "ron",
+        "bg" => "bul",
+        "sr" => "srp",
+        "hr" => "hrv",
+        "sk" => "slk",
+        "sl" => "slv",
+        "ca" => "cat",
+        "eu" => "eus",
+        "gl" => "glg",
+        "is" => "isl",
+        "ga" => "gle",
+        "cy" => "cym",
+        "af" => "afr",
+        "am" => "amh",
+        "bn" => "ben",
+        "ta" => "tam",
+        "te" => "tel",
+        "mr" => "mar",
+        "ml" => "mal",
+        "gu" => "guj",
+        "kn" => "kan",
+        "pa" => "pan",
+        "yo" => "yor",
+        "vi" => "vie",
+        "id" => "ind",
+        "th" => "tha",
+        "ar" => "ara",
+        "hi" => "hin",
+        _ => return None,
+    };
+    Some(mapped.to_string())
 }
 
 fn language_pack_path(code: &str) -> Result<PathBuf> {
@@ -130,4 +232,5 @@ struct TranslateSection {
     iso_country_lang: Option<HashMap<String, HashMap<String, String>>>,
     parts_of_speech: Option<HashMap<String, HashMap<String, String>>>,
     report_labels: Option<HashMap<String, HashMap<String, String>>>,
+    client_labels: Option<HashMap<String, HashMap<String, String>>>,
 }

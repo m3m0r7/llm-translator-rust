@@ -111,6 +111,11 @@ pub fn get_last_using_model() -> Result<Option<String>> {
     Ok(meta.last_using_model)
 }
 
+pub fn get_cached_models() -> Result<Vec<String>> {
+    let meta = read_meta()?;
+    Ok(meta.models)
+}
+
 pub fn set_last_using_model(provider: ProviderKind, model: &str) -> Result<()> {
     let mut meta = read_meta()?;
     meta.last_using_model = Some(format!("{}:{}", provider.as_str(), model));
