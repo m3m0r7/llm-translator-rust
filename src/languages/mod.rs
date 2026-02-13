@@ -1,10 +1,11 @@
 use anyhow::{Context, Result, anyhow};
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::fs;
-use std::path::PathBuf;
 
 mod tools;
+mod generated {
+    include!(concat!(env!("OUT_DIR"), "/embedded_language_packs.rs"));
+}
 
 pub use tools::{map_lang_for_espeak, map_lang_for_whisper};
 
@@ -67,11 +68,11 @@ pub fn load_language_packs(codes: &[String]) -> Result<LanguagePacks> {
 }
 
 fn load_language_pack(code: &str) -> Result<LanguagePack> {
-    let path = language_pack_path(code)?;
-    let content = fs::read_to_string(&path)
-        .with_context(|| format!("failed to read language pack: {}", path.display()))?;
-    let parsed: LanguagePackFile = toml::from_str(&content)
-        .with_context(|| format!("failed to parse language pack: {}", path.display()))?;
+    let code_norm = code.to_lowercase();
+    let content = generated::embedded_language_pack(&code_norm)
+        .ok_or_else(|| anyhow!("language pack not found: {}.toml", code_norm))?;
+    let parsed: LanguagePackFile = toml::from_str(content)
+        .with_context(|| format!("failed to parse language pack: {}.toml", code_norm))?;
 
     let mut iso_country_lang = HashMap::new();
     let mut parts_of_speech = HashMap::new();
@@ -79,22 +80,22 @@ fn load_language_pack(code: &str) -> Result<LanguagePack> {
     let mut client_labels = HashMap::new();
     if let Some(translate) = parsed.translate {
         if let Some(map) = translate.iso_country_lang
-            && let Some(entries) = map.get(&code.to_lowercase())
+            && let Some(entries) = map.get(&code_norm)
         {
             iso_country_lang.extend(entries.iter().map(|(k, v)| (k.to_lowercase(), v.clone())));
         }
         if let Some(map) = translate.parts_of_speech
-            && let Some(entries) = map.get(&code.to_lowercase())
+            && let Some(entries) = map.get(&code_norm)
         {
             parts_of_speech.extend(entries.iter().map(|(k, v)| (k.to_string(), v.clone())));
         }
         if let Some(map) = translate.report_labels
-            && let Some(entries) = map.get(&code.to_lowercase())
+            && let Some(entries) = map.get(&code_norm)
         {
             report_labels.extend(entries.iter().map(|(k, v)| (k.to_string(), v.clone())));
         }
         if let Some(map) = translate.client_labels
-            && let Some(entries) = map.get(&code.to_lowercase())
+            && let Some(entries) = map.get(&code_norm)
         {
             client_labels.extend(entries.iter().map(|(k, v)| (k.to_string(), v.clone())));
         }
@@ -200,17 +201,6 @@ pub fn normalize_pack_code(code: &str) -> Option<String> {
         _ => return None,
     };
     Some(mapped.to_string())
-}
-
-fn language_pack_path(code: &str) -> Result<PathBuf> {
-    let base = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("src")
-        .join("languages")
-        .join(format!("{}.toml", code.to_lowercase()));
-    if !base.exists() {
-        return Err(anyhow!("language pack not found: {}", base.display()));
-    }
-    Ok(base)
 }
 
 fn normalize_code(code: &str) -> String {
